@@ -153,6 +153,7 @@
     <div class="optRow" id="rowEnemies"></div>
     <div class="optRow" id="rowDiff"></div>
     <div class="optRow" id="rowLen"></div>
+    <div class="optRow" id="rowScene"></div>
     <div class="feats">
       🔫 <b id="featMode">5 个敌人 · 普通难度 · 3 分钟</b>死斗<br/>
       🎯 <b>手机自动开火</b>：准星变红自动射击 · 💥 <b>爆头双倍伤害</b><br/>
@@ -241,7 +242,8 @@ scene.fog=new THREE.Fog(0x04040c,35,100);
 const camera=new THREE.PerspectiveCamera(75,window.innerWidth/window.innerHeight,0.1,240);
 camera.rotation.order='YXZ';
 scene.add(camera);
-scene.add(new THREE.HemisphereLight(0x99aaff,0x0a0a14,1.0));
+const hemi=new THREE.HemisphereLight(0x99aaff,0x0a0a14,1.0);
+scene.add(hemi);
 const dl=new THREE.DirectionalLight(0xffffff,0.7); dl.position.set(24,42,12);
 dl.castShadow=true;
 dl.shadow.mapSize.set(2048,2048);
@@ -385,41 +387,80 @@ function makeCrateTexture(hazard){
   t.colorSpace=THREE.SRGBColorSpace;
   return t;
 }
-function makeSkyTexture(){
+/* ================= 场景（白天/黎明/傍晚/夜晚） ================= */
+const SCENES=[
+  {name:'白天', top:'#2e6cc8',mid:'#8fc0ee',hor:'#e6f3ff',low:'#101418',
+   stars:0,clouds:true,sunY:200,sunR:58,sunCol:'#fff8e0',sunGlow:'255,250,220',
+   city:'#1c2740',winA:0.15,
+   fog:0xc8dcee,fogN:50,fogF:150,
+   sunC:0xfff3da,sunI:1.7,sunPos:[30,55,20],
+   hemiS:0xcfe4ff,hemiG:0x445566,hemiI:1.0,accent:0.25},
+  {name:'黎明', top:'#141238',mid:'#6a2f6e',hor:'#ff9e58',low:'#0c0c16',
+   stars:120,clouds:false,sunY:465,sunR:68,sunCol:'#ffcf9a',sunGlow:'255,170,110',
+   city:'#080810',winA:0.5,
+   fog:0x9a6a72,fogN:38,fogF:115,
+   sunC:0xffb37a,sunI:1.05,sunPos:[-38,16,8],
+   hemiS:0xd8a8c8,hemiG:0x2a2030,hemiI:0.75,accent:0.7},
+  {name:'傍晚', top:'#0e0e30',mid:'#54265e',hor:'#ff7a3c',low:'#0a0a12',
+   stars:260,clouds:false,sunY:478,sunR:72,sunCol:'#ff9a5a',sunGlow:'255,130,70',
+   city:'#06060c',winA:0.55,
+   fog:0x7a4a5e,fogN:35,fogF:110,
+   sunC:0xff8a4a,sunI:0.95,sunPos:[38,13,-6],
+   hemiS:0xc898d8,hemiG:0x201a28,hemiI:0.7,accent:0.8},
+  {name:'夜晚', top:'#020208',mid:'#0a0a24',hor:'#2a1e44',low:'#030308',
+   stars:520,clouds:false,sunY:175,sunR:44,sunCol:'#dfe6ff',sunGlow:'220,230,255',moon:true,
+   city:'#05050c',winA:0.5,
+   fog:0x04040c,fogN:35,fogF:100,
+   sunC:0xffffff,sunI:0.7,sunPos:[24,42,12],
+   hemiS:0x99aaff,hemiG:0x0a0a14,hemiI:1.0,accent:1.0}
+];
+function makeSkyTexture(s){
   const c=document.createElement('canvas'); c.width=2048; c.height=1024;
   const g=c.getContext('2d');
   const gr=g.createLinearGradient(0,0,0,1024);
-  gr.addColorStop(0,'#020208');
-  gr.addColorStop(0.35,'#0a0a24');
-  gr.addColorStop(0.5,'#2a1e44');
-  gr.addColorStop(0.58,'#0c0c18');
-  gr.addColorStop(1,'#030308');
+  gr.addColorStop(0,s.top);
+  gr.addColorStop(0.38,s.mid);
+  gr.addColorStop(0.5,s.hor);
+  gr.addColorStop(0.58,s.low);
+  gr.addColorStop(1,'#020204');
   g.fillStyle=gr; g.fillRect(0,0,2048,1024);
-  for(const n of[[500,200,320,'120,60,200'],[1400,280,380,'40,120,200'],[1000,140,260,'200,60,160']]){
-    const ng=g.createRadialGradient(n[0],n[1],0,n[0],n[1],n[2]);
-    ng.addColorStop(0,'rgba('+n[3]+',0.10)'); ng.addColorStop(1,'rgba('+n[3]+',0)');
-    g.fillStyle=ng; g.beginPath(); g.arc(n[0],n[1],n[2],0,7); g.fill();
+  if(!s.clouds){
+    for(const n of[[500,200,320,'120,60,200'],[1400,280,380,'40,120,200'],[1000,140,260,'200,60,160']]){
+      const ng=g.createRadialGradient(n[0],n[1],0,n[0],n[1],n[2]);
+      ng.addColorStop(0,'rgba('+n[3]+',0.10)'); ng.addColorStop(1,'rgba('+n[3]+',0)');
+      g.fillStyle=ng; g.beginPath(); g.arc(n[0],n[1],n[2],0,7); g.fill();
+    }
+  }else{
+    for(let i=0;i<16;i++){
+      const cx=Math.random()*2048,cy=rand(60,330),cw=rand(120,300),ch=rand(24,54);
+      const cg2=g.createRadialGradient(cx,cy,0,cx,cy,cw);
+      cg2.addColorStop(0,'rgba(255,255,255,0.75)'); cg2.addColorStop(1,'rgba(255,255,255,0)');
+      g.fillStyle=cg2;
+      g.save(); g.translate(cx,cy); g.scale(1,ch/cw); g.translate(-cx,-cy);
+      g.beginPath(); g.arc(cx,cy,cw,0,7); g.fill(); g.restore();
+    }
   }
-  for(let i=0;i<520;i++){ // 星星
-    const x=Math.random()*2048,y=Math.random()*430;
+  for(let i=0;i<s.stars;i++){
     g.fillStyle='rgba(255,255,255,'+rand(0.25,1)+')';
-    g.beginPath(); g.arc(x,y,rand(0.6,1.8),0,7); g.fill();
+    g.beginPath(); g.arc(Math.random()*2048,Math.random()*430,rand(0.6,1.8),0,7); g.fill();
   }
-  const mx=1560,my=175; // 月亮
-  const mg=g.createRadialGradient(mx,my,10,mx,my,130);
-  mg.addColorStop(0,'rgba(220,230,255,0.5)'); mg.addColorStop(1,'rgba(220,230,255,0)');
-  g.fillStyle=mg; g.beginPath(); g.arc(mx,my,130,0,7); g.fill();
-  g.fillStyle='#dfe6ff'; g.beginPath(); g.arc(mx,my,44,0,7); g.fill();
-  g.fillStyle='rgba(160,170,200,0.5)';
-  for(let i=0;i<7;i++){g.beginPath();g.arc(mx+rand(-24,24),my+rand(-24,24),rand(4,10),0,7);g.fill();}
-  let x=0; // 远景城市剪影（地平线 y=540）
+  const sx=1560,sy=s.sunY;
+  const sg=g.createRadialGradient(sx,sy,10,sx,sy,s.sunR*2.6);
+  sg.addColorStop(0,'rgba('+s.sunGlow+',0.55)'); sg.addColorStop(1,'rgba('+s.sunGlow+',0)');
+  g.fillStyle=sg; g.beginPath(); g.arc(sx,sy,s.sunR*2.6,0,7); g.fill();
+  g.fillStyle=s.sunCol; g.beginPath(); g.arc(sx,sy,s.sunR,0,7); g.fill();
+  if(s.moon){
+    g.fillStyle='rgba(160,170,200,0.5)';
+    for(let i=0;i<7;i++){g.beginPath();g.arc(sx+rand(-24,24),sy+rand(-24,24),rand(4,10),0,7);g.fill();}
+  }
+  let x=0;
   while(x<2048){
     const bw=rand(60,170),bh=rand(90,260);
-    g.fillStyle='#05050c';
+    g.fillStyle=s.city;
     g.fillRect(x,540-bh,bw,bh+30);
     for(let wy=540-bh+14;wy<528;wy+=22){
       for(let wx=x+8;wx<x+bw-8;wx+=16){
-        if(Math.random()<0.28){
+        if(Math.random()<s.winA+0.1){
           g.fillStyle=Math.random()<0.75?'rgba(255,210,120,'+rand(0.35,0.9)+')':'rgba(120,230,255,'+rand(0.3,0.8)+')';
           g.fillRect(wx,wy,7,10);
         }
@@ -430,6 +471,19 @@ function makeSkyTexture(){
   const t=new THREE.CanvasTexture(c);
   t.colorSpace=THREE.SRGBColorSpace;
   return t;
+}
+let skyMesh=null;
+const skyCache={};
+function applyScene(i){
+  gameCfg.sceneIdx=i;
+  const s=SCENES[i];
+  if(!skyCache[i])skyCache[i]=makeSkyTexture(s);
+  if(skyMesh){skyMesh.material.map=skyCache[i]; skyMesh.material.needsUpdate=true;}
+  scene.fog.color.setHex(s.fog); scene.fog.near=s.fogN; scene.fog.far=s.fogF;
+  dl.color.setHex(s.sunC); dl.intensity=s.sunI;
+  dl.position.set(s.sunPos[0],s.sunPos[1],s.sunPos[2]);
+  hemi.color.setHex(s.hemiS); hemi.groundColor.setHex(s.hemiG); hemi.intensity=s.hemiI;
+  pl1.intensity=60*s.accent; pl2.intensity=60*s.accent;
 }
 (function buildArena(){
   const cg=makeConcreteTexture();
@@ -523,12 +577,12 @@ function makeSkyTexture(){
     scene.add(strip);
   }
 })();
-(function buildSky(){ // 夜空 + 远景城市
-  const sky=new THREE.Mesh(
+(function buildSky(){
+  skyMesh=new THREE.Mesh(
     new THREE.SphereGeometry(210,32,16),
-    new THREE.MeshBasicMaterial({map:makeSkyTexture(),side:THREE.BackSide,fog:false})
+    new THREE.MeshBasicMaterial({map:makeSkyTexture(SCENES[3]),side:THREE.BackSide,fog:false})
   );
-  scene.add(sky);
+  scene.add(skyMesh);
 })();
 // 圆形 vs AABB 碰撞推挤
 const _tmpC=new THREE.Vector3();
@@ -734,7 +788,7 @@ const DIFFS=[
 const ENEMY_OPTS=[3,5,8];
 const LEN_OPTS=[{t:'2 分钟',s:120},{t:'3 分钟',s:180},{t:'5 分钟',s:300}];
 const MAX_BOTS=8;
-const gameCfg={enemyIdx:1,diffIdx:1,lenIdx:1}; // 默认：5个 / 普通 / 3分钟
+const gameCfg={enemyIdx:1,diffIdx:1,lenIdx:1,sceneIdx:3}; // 默认：5个 / 普通 / 3分钟 / 夜晚
 let diffPreset=DIFFS[1];
 
 /* ================= 机器人敌人 ================= */
@@ -1272,6 +1326,7 @@ function resetGame(){
   elapsed=0; difficulty=0;
   diffPreset=DIFFS[gameCfg.diffIdx];
   matchLen=LEN_OPTS[gameCfg.lenIdx].s;
+  applyScene(gameCfg.sceneIdx);
   gun.visible=true;
   $('wpnName').textContent='冲锋枪'; $('wpnName').style.color='#00ffcc';
   gunGlow.material.color.setHex(0x00ffcc);
@@ -1318,9 +1373,10 @@ function buildOptions(){
   const rows=[
     ['rowEnemies',ENEMY_OPTS.map(n=>n+' 个'),gameCfg.enemyIdx,i=>{gameCfg.enemyIdx=i;applyBotCount();}],
     ['rowDiff',DIFFS.map(d=>d.name),gameCfg.diffIdx,i=>{gameCfg.diffIdx=i;}],
-    ['rowLen',LEN_OPTS.map(l=>l.t),gameCfg.lenIdx,i=>{gameCfg.lenIdx=i;}]
+    ['rowLen',LEN_OPTS.map(l=>l.t),gameCfg.lenIdx,i=>{gameCfg.lenIdx=i;}],
+    ['rowScene',SCENES.map(s=>s.name),gameCfg.sceneIdx,i=>{applyScene(i);}]
   ];
-  const labs=['敌人数量','敌人难度','对战时长'];
+  const labs=['敌人数量','敌人难度','对战时长','场景'];
   rows.forEach((r,ri)=>{
     const row=$(r[0]); row.innerHTML='';
     const s=document.createElement('span'); s.className='olab'; s.textContent=labs[ri];
@@ -1446,6 +1502,7 @@ addEventListener('resize',()=>{
 for(let i=0;i<MAX_BOTS;i++)makeBot(i);
 buildOptions();
 applyBotCount();
+applyScene(gameCfg.sceneIdx);
 for(const s of PICKUP_SPOTS)makePickup(s);
 updateHpHUD(); updateAmmoHUD();
 requestAnimationFrame(loop);
