@@ -128,7 +128,7 @@
     <div id="hpwrap"><div id="hpbar"><div id="hpfill"></div></div><div id="hptext">HP 100</div></div>
     <div id="wpn">
       <div id="wpnName">冲锋枪</div><div id="ammo">30</div><br/>
-      <button class="hbtn" id="muteBtn">🔊</button><button class="hbtn" id="autoBtn">🎯</button><button class="hbtn" id="fsBtn">⛶</button>
+      <button class="hbtn" id="muteBtn">🔊</button><button class="hbtn" id="autoBtn">🎯</button><button class="hbtn" id="fsBtn">⛶</button><button class="hbtn" id="qBtn">✨</button>
     </div>
     <div id="cross"><span class="l t"></span><span class="l b"></span><span class="l lft"></span><span class="l rgt"></span><span class="l dot"></span></div>
     <div id="hitm"><span class="a"></span><span class="b"></span><span class="c"></span><span class="d"></span></div>
@@ -154,6 +154,7 @@
     <div class="optRow" id="rowDiff"></div>
     <div class="optRow" id="rowLen"></div>
     <div class="optRow" id="rowScene"></div>
+    <div class="optRow" id="rowQuality"></div>
     <div class="feats">
       🔫 <b id="featMode">5 个敌人 · 普通难度 · 3 分钟</b>死斗<br/>
       🎯 <b>手机自动开火</b>：准星变红自动射击 · 💥 <b>爆头双倍伤害</b><br/>
@@ -225,6 +226,85 @@ const sfxHurt=()=>tone(105,0.16,'sawtooth',0.3,60);
 const sfxEmpty=()=>tone(2200,0.04,'square',0.1);
 const sfxReload=()=>{tone(700,0.05,'square',0.14);tone(500,0.06,'square',0.14,null,0.12);tone(900,0.05,'square',0.16,null,0.3);};
 const sfxDie=()=>tone(220,0.5,'sawtooth',0.28,55);
+
+/* ================= 背景音乐（WebAudio 合成电子乐，无素材） ================= */
+const CHORDS=[
+  {root:45,tones:[57,60,64]},   // Am
+  {root:41,tones:[53,57,60]},   // F
+  {root:36,tones:[60,64,67]},   // C
+  {root:43,tones:[59,62,67]}    // G
+];
+const mtof=m=>440*Math.pow(2,(m-69)/12);
+let musicBus=null,mDelay=null;
+function musicNodes(){
+  if(musicBus||!AC)return;
+  musicBus=AC.createGain(); musicBus.gain.value=0.4; musicBus.connect(masterGain);
+  mDelay=AC.createDelay(1);
+  mDelay.delayTime.value=60/116/4*3; // 附点八分延迟，制造空间感
+  const fb=AC.createGain(); fb.gain.value=0.32;
+  mDelay.connect(fb); fb.connect(mDelay); mDelay.connect(musicBus);
+}
+function mNote(m,t,dur,type,vol,lp,delaySend){
+  const o=AC.createOscillator(),g=AC.createGain(),f=AC.createBiquadFilter();
+  o.type=type; o.frequency.value=mtof(m);
+  f.type='lowpass'; f.frequency.value=lp||9000;
+  g.gain.setValueAtTime(0.0001,t);
+  g.gain.exponentialRampToValueAtTime(vol,t+0.015);
+  g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  o.connect(f); f.connect(g); g.connect(musicBus);
+  if(delaySend)g.connect(mDelay);
+  o.start(t); o.stop(t+dur+0.05);
+}
+function mKick(t){
+  const o=AC.createOscillator(),g=AC.createGain();
+  o.type='sine';
+  o.frequency.setValueAtTime(150,t);
+  o.frequency.exponentialRampToValueAtTime(42,t+0.12);
+  g.gain.setValueAtTime(0.5,t);
+  g.gain.exponentialRampToValueAtTime(0.0001,t+0.24);
+  o.connect(g); g.connect(musicBus); o.start(t); o.stop(t+0.3);
+}
+function mNoise(t,dur,vol,ftype,ffreq){
+  const len=Math.floor(AC.sampleRate*dur);
+  const buf=AC.createBuffer(1,len,AC.sampleRate);
+  const d=buf.getChannelData(0);
+  for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,2.5);
+  const src=AC.createBufferSource(); src.buffer=buf;
+  const f=AC.createBiquadFilter(); f.type=ftype; f.frequency.value=ffreq;
+  const g=AC.createGain(); g.gain.value=vol;
+  src.connect(f); f.connect(g); g.connect(musicBus); src.start(t);
+}
+function mStep(s,t){
+  const bar=(s>>4)&3, st=s&15, ch=CHORDS[bar];
+  if(st%4===0)mKick(t);                                            // 底鼓
+  if(st===4||st===12){mNoise(t,0.16,0.28,'bandpass',1900);mNote(50,t,0.1,'triangle',0.12,3000);} // 军鼓
+  if(st%2===0)mNoise(t,0.05,0.10,'highpass',7500);                  // 踩镲
+  if(st%2===0)mNote(st===14?ch.root+12:ch.root,t,0.22,'sawtooth',0.20,700); // 贝斯
+  const at=[ch.tones[0],ch.tones[1],ch.tones[2],ch.tones[0]+12];    // 琶音
+  mNote(at[s%4],t,0.11,'square',0.055,6000,true);
+}
+const Music={
+  playing:false,step:0,nextT:0,timer:null,bpm:116,
+  start(){
+    if(this.playing)return;
+    initAudio();
+    if(!AC)return;
+    musicNodes();
+    this.playing=true; this.step=0;
+    this.nextT=AC.currentTime+0.08;
+    this.tick();
+  },
+  stop(){ this.playing=false; clearTimeout(this.timer); },
+  tick(){
+    if(!this.playing)return;
+    const spb=60/this.bpm/4;
+    while(this.nextT<AC.currentTime+0.28){
+      mStep(this.step,this.nextT);
+      this.nextT+=spb; this.step=(this.step+1)%64;
+    }
+    this.timer=setTimeout(()=>this.tick(),90);
+  }
+};
 
 /* ================= 渲染器 / 场景 ================= */
 const canvas=$('game');
@@ -851,6 +931,11 @@ $('fsBtn').addEventListener('click',()=>{
     else document.documentElement.requestFullscreen();
   }catch(e){}
 });
+$('qBtn').addEventListener('click',()=>{
+  initAudio();
+  applyQuality(gameCfg.qIdx===1?0:1);
+  buildOptions();
+});
 // 点武器栏循环切换已拥有的武器（触屏用）
 $('wpn').style.pointerEvents='auto';
 $('wpn').style.cursor='pointer';
@@ -874,8 +959,30 @@ const DIFFS=[
 const ENEMY_OPTS=[3,5,8];
 const LEN_OPTS=[{t:'2 分钟',s:120},{t:'3 分钟',s:180},{t:'5 分钟',s:300}];
 const MAX_BOTS=8;
-const gameCfg={enemyIdx:1,diffIdx:1,lenIdx:1,sceneIdx:3}; // 默认：5个 / 普通 / 3分钟 / 夜晚
+const gameCfg={enemyIdx:1,diffIdx:1,lenIdx:1,sceneIdx:3,qIdx:1}; // 默认：5个 / 普通 / 3分钟 / 夜晚 / 精美
 let diffPreset=DIFFS[1];
+
+/* ================= 画质档位 ================= */
+const QUALITY=[
+  {name:'流畅',pr:1,shadow:0,exposure:1.15},
+  {name:'精美',pr:2,shadow:2048,exposure:1.32}
+];
+function applyQuality(i){
+  gameCfg.qIdx=i;
+  const q=QUALITY[i];
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,q.pr));
+  const on=q.shadow>0;
+  if(renderer.shadowMap.enabled!==on){
+    renderer.shadowMap.enabled=on;
+    scene.traverse(o=>{if(o.material)o.material.needsUpdate=true;});
+  }
+  if(on&&dl.shadow.mapSize.x!==q.shadow){
+    dl.shadow.mapSize.set(q.shadow,q.shadow);
+    if(dl.shadow.map){dl.shadow.map.dispose(); dl.shadow.map=null;}
+  }
+  renderer.toneMappingExposure=q.exposure;
+  const qb=$('qBtn'); if(qb)qb.classList.toggle('off',i===0);
+}
 
 /* ================= 机器人敌人 ================= */
 const bots=[];
@@ -1413,6 +1520,7 @@ function resetGame(){
   diffPreset=DIFFS[gameCfg.diffIdx];
   matchLen=LEN_OPTS[gameCfg.lenIdx].s;
   applyScene(gameCfg.sceneIdx);
+  applyQuality(gameCfg.qIdx);
   gun.visible=true;
   $('wpnName').textContent='冲锋枪'; $('wpnName').style.color='#00ffcc';
   gunGlow.material.color.setHex(0x00ffcc);
@@ -1428,6 +1536,7 @@ function startGame(){
   initAudio();
   if(AC&&AC.state==='suspended')AC.resume();
   resetGame();
+  Music.start();
   state='playing';
   $('menu').style.display='none'; $('over').style.display='none';
   $('hud').style.display='block';
@@ -1437,6 +1546,7 @@ function startGame(){
 function endGame(){
   state='over';
   firing=false;
+  Music.stop();
   $('hud').style.display='none'; $('touchUI').style.display='none';
   const acc=player.shots>0?Math.round(player.hits/player.shots*100):0;
   $('overStats').innerHTML=
@@ -1460,9 +1570,10 @@ function buildOptions(){
     ['rowEnemies',ENEMY_OPTS.map(n=>n+' 个'),gameCfg.enemyIdx,i=>{gameCfg.enemyIdx=i;applyBotCount();}],
     ['rowDiff',DIFFS.map(d=>d.name),gameCfg.diffIdx,i=>{gameCfg.diffIdx=i;}],
     ['rowLen',LEN_OPTS.map(l=>l.t),gameCfg.lenIdx,i=>{gameCfg.lenIdx=i;}],
-    ['rowScene',SCENES.map(s=>s.name),gameCfg.sceneIdx,i=>{applyScene(i);}]
+    ['rowScene',SCENES.map(s=>s.name),gameCfg.sceneIdx,i=>{applyScene(i);}],
+    ['rowQuality',QUALITY.map(q=>q.name),gameCfg.qIdx,i=>{applyQuality(i);}]
   ];
-  const labs=['敌人数量','敌人难度','对战时长','场景'];
+  const labs=['敌人数量','敌人难度','对战时长','场景','画质'];
   rows.forEach((r,ri)=>{
     const row=$(r[0]); row.innerHTML='';
     const s=document.createElement('span'); s.className='olab'; s.textContent=labs[ri];
@@ -1477,6 +1588,7 @@ function buildOptions(){
   updateFeat();
 }
 $('menuBtn').addEventListener('click',()=>{
+  Music.stop();
   resetGame(); state='menu';
   $('over').style.display='none'; $('menu').style.display='flex';
 });
@@ -1589,6 +1701,7 @@ for(let i=0;i<MAX_BOTS;i++)makeBot(i);
 buildOptions();
 applyBotCount();
 applyScene(gameCfg.sceneIdx);
+applyQuality(gameCfg.qIdx);
 for(const s of PICKUP_SPOTS)makePickup(s);
 updateHpHUD(); updateAmmoHUD();
 requestAnimationFrame(loop);
