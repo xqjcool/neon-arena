@@ -104,6 +104,15 @@
     color:#021;border:none;border-radius:12px;background:linear-gradient(135deg,#00ffcc,#00aaff);
     box-shadow:0 0 24px rgba(0,255,200,.7);cursor:pointer;}
   .bigbtn:active{transform:scale(.96);}
+  .bigbtn.ghost{background:transparent;color:#0ff;border:1px solid rgba(0,255,255,.6);
+    box-shadow:none;margin-top:12px;padding:11px 40px;font-size:16px;letter-spacing:4px;}
+  /* ---------- 开始页面选项 ---------- */
+  .optRow{margin:7px 0;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;}
+  .olab{font-size:14px;color:#9db;letter-spacing:2px;min-width:70px;text-align:right;}
+  .optBtn{padding:8px 15px;font-size:14px;font-weight:700;color:#8ef;letter-spacing:1px;
+    background:rgba(0,60,80,.4);border:1px solid rgba(0,255,255,.35);border-radius:8px;cursor:pointer;}
+  .optBtn.sel{color:#021;background:linear-gradient(135deg,#00ffcc,#00aaff);
+    box-shadow:0 0 14px rgba(0,255,200,.6);border-color:transparent;}
   .hint{margin-top:14px;font-size:12px;color:#789;line-height:1.9;}
   #over{display:none;}
   #overStats{margin:16px 0;font-size:16px;line-height:2.1;color:#cfe;}
@@ -119,7 +128,7 @@
     <div id="hpwrap"><div id="hpbar"><div id="hpfill"></div></div><div id="hptext">HP 100</div></div>
     <div id="wpn">
       <div id="wpnName">冲锋枪</div><div id="ammo">30</div><br/>
-      <button class="hbtn" id="muteBtn">🔊</button><button class="hbtn" id="autoBtn">🎯</button>
+      <button class="hbtn" id="muteBtn">🔊</button><button class="hbtn" id="autoBtn">🎯</button><button class="hbtn" id="fsBtn">⛶</button>
     </div>
     <div id="cross"><span class="l t"></span><span class="l b"></span><span class="l lft"></span><span class="l rgt"></span><span class="l dot"></span></div>
     <div id="hitm"><span class="a"></span><span class="b"></span><span class="c"></span><span class="d"></span></div>
@@ -141,12 +150,13 @@
   <div id="menu" class="screen">
     <div class="title">霓虹竞技场</div>
     <div class="subtitle">NEON ARENA</div>
+    <div class="optRow" id="rowEnemies"></div>
+    <div class="optRow" id="rowDiff"></div>
+    <div class="optRow" id="rowLen"></div>
     <div class="feats">
-      🔫 <b>3 分钟死斗</b>：单人对阵 5 个 AI 机器人<br/>
-      🎯 <b>手机自动开火</b>：准星套住敌人自动射击<br/>
-      💥 <b>爆头双倍伤害</b> + 击杀掉血包，越打越勇<br/>
-      📦 拾取 <b>突击步枪 / 霰弹枪 / 医疗包</b><br/>
-      🏆 连杀播报：双杀、三杀、暴走！
+      🔫 <b id="featMode">5 个敌人 · 普通难度 · 3 分钟</b>死斗<br/>
+      🎯 <b>手机自动开火</b>：准星变红自动射击 · 💥 <b>爆头双倍伤害</b><br/>
+      📦 拾取 <b>步枪 / 霰弹枪 / 医疗包</b> · 🏆 连杀播报：双杀、三杀、暴走
     </div>
     <button class="bigbtn" id="startBtn">开始战斗</button>
     <div class="hint" id="ctrlHint"></div>
@@ -156,6 +166,7 @@
     <div class="title" style="font-size:36px;">战斗结束</div>
     <div id="overStats"></div>
     <button class="bigbtn" id="againBtn">再来一局</button>
+    <button class="bigbtn ghost" id="menuBtn">返回菜单</button>
   </div>
 </div>
 <script>
@@ -552,6 +563,13 @@ $('autoBtn').addEventListener('click',()=>{
 });
 $('autoBtn').classList.toggle('off',!autoFire);
 if(!IS_TOUCH)$('autoBtn').style.display='none';
+$('fsBtn').addEventListener('click',()=>{
+  initAudio();
+  try{
+    if(document.fullscreenElement)document.exitFullscreen();
+    else document.documentElement.requestFullscreen();
+  }catch(e){}
+});
 // 点武器栏循环切换已拥有的武器（触屏用）
 $('wpn').style.pointerEvents='auto';
 $('wpn').style.cursor='pointer';
@@ -565,11 +583,24 @@ $('wpn').addEventListener('click',e=>{
   }
 });
 
+/* ================= 开局配置（开始页面选项） ================= */
+const DIFFS=[
+  {name:'简单',hp:70, dmg:0.6,spd:0.85,aim:-0.12,cd:1.35},
+  {name:'普通',hp:100,dmg:1.0,spd:1.0, aim:0,   cd:1.0},
+  {name:'困难',hp:140,dmg:1.5,spd:1.12,aim:0.10,cd:0.8},
+  {name:'地狱',hp:200,dmg:2.2,spd:1.25,aim:0.18,cd:0.62}
+];
+const ENEMY_OPTS=[3,5,8];
+const LEN_OPTS=[{t:'2 分钟',s:120},{t:'3 分钟',s:180},{t:'5 分钟',s:300}];
+const MAX_BOTS=8;
+const gameCfg={enemyIdx:1,diffIdx:1,lenIdx:1}; // 默认：5个 / 普通 / 3分钟
+let diffPreset=DIFFS[1];
+
 /* ================= 机器人敌人 ================= */
 const bots=[];
 const botMeshes=[]; // 用于射线检测
-const BOT_COLORS=[0xff3355,0xffaa00,0x22ff88,0xbb66ff,0x3399ff,0xff66cc];
-const BOT_NAMES=['BOT-1','BOT-2','BOT-3','BOT-4','BOT-5','BOT-6'];
+const BOT_COLORS=[0xff3355,0xffaa00,0x22ff88,0xbb66ff,0x3399ff,0xff66cc,0xffff44,0x44ffff];
+const BOT_NAMES=['BOT-1','BOT-2','BOT-3','BOT-4','BOT-5','BOT-6','BOT-7','BOT-8'];
 let difficulty=0;
 function spawnPointFar(){
   for(let i=0;i<12;i++){
@@ -587,7 +618,7 @@ function makeBot(idx){
   const bot={
     idx:idx,name:BOT_NAMES[idx%BOT_NAMES.length],g:g,mat:mat,hpFg:null,hitMeshes:[],
     legL:null,legR:null,armL:null,armR:null,
-    pos:new THREE.Vector3(),hp:100,alive:true,respawnT:0,
+    pos:new THREE.Vector3(),hp:100,maxHp:100,alive:true,respawnT:0,enabled:false,
     speed:rand(5.2,6.6),shootCd:rand(0.6,1.6),reaction:0,
     strafDir:Math.random()<0.5?1:-1,strafT:rand(1,2.4),flashT:0,walkPhase:rand(0,6)
   };
@@ -651,16 +682,26 @@ function makeBot(idx){
   const hpFg=new THREE.Mesh(hpGeo,new THREE.MeshBasicMaterial({color:0x33ff66}));
   hpFg.position.set(-0.45,2.46,0.12); g.add(hpFg);
   bot.hpFg=hpFg;
-  respawnBot(bot,true);
   scene.add(g); bots.push(bot);
+  g.visible=false;
   return bot;
+}
+/* 按开始页面的敌人数量启用/停用机器人 */
+function applyBotCount(){
+  const n=ENEMY_OPTS[gameCfg.enemyIdx];
+  for(let i=0;i<bots.length;i++){
+    const b=bots[i];
+    b.enabled=i<n;
+    if(b.enabled)respawnBot(b,true);
+    else{b.alive=false;b.g.visible=false;}
+  }
 }
 function respawnBot(bot,first){
   const p=spawnPointFar();
-  bot.pos.copy(p); bot.hp=100; bot.alive=true;
+  bot.pos.copy(p); bot.maxHp=diffPreset.hp; bot.hp=bot.maxHp; bot.alive=true;
   bot.hpFg.scale.x=1; bot.hpFg.material.color.setHex(0x33ff66);
   bot.mat.emissive.setHex(0x000000);
-  bot.shootCd=rand(0.8,1.8); bot.reaction=0;
+  bot.shootCd=rand(0.8,1.8)*diffPreset.cd; bot.reaction=0;
   bot.g.visible=true;
   bot.g.position.copy(bot.pos);
   if(!first)spawnBurst(bot.pos.clone().add(new THREE.Vector3(0,1.2,0)),0x00ffff,14,5,0.5);
@@ -668,6 +709,7 @@ function respawnBot(bot,first){
 const _v1=new THREE.Vector3(),_v2=new THREE.Vector3(),_v3=new THREE.Vector3();
 function botEyePos(bot,out){return out.set(bot.pos.x,bot.pos.y+1.72,bot.pos.z);}
 function updateBot(bot,dt){
+  if(!bot.enabled)return;
   if(!bot.alive){
     bot.respawnT-=dt;
     if(bot.respawnT<=0&&state==='playing')respawnBot(bot,false);
@@ -679,7 +721,7 @@ function updateBot(bot,dt){
   bot.g.rotation.y=Math.atan2(dx,dz);
   // 移动：远追 / 近退 / 中距离走位扫射
   let mx=0,mz=0;
-  const spd=bot.speed+difficulty*1.6;
+  const spd=bot.speed*diffPreset.spd+difficulty*1.6;
   if(dist>21){mx=dx;mz=dz;}
   else if(dist<9){mx=-dx;mz=-dz;}
   else{
@@ -703,7 +745,7 @@ function updateBot(bot,dt){
   if(bot.shootCd<=0&&dist<34){
     botEyePos(bot,_v3);
     _v2.set(player.pos.x,EYE+player.y,player.pos.z);
-    if(hasLOS(_v3,_v2)){bot.reaction=0.3;bot.shootCd=rand(0.75,1.5)*(1-difficulty*0.3);}
+    if(hasLOS(_v3,_v2)){bot.reaction=0.3;bot.shootCd=rand(0.75,1.5)*diffPreset.cd*(1-difficulty*0.3);}
     else bot.shootCd=0.35;
   }
   if(bot.reaction>0){
@@ -717,7 +759,7 @@ function updateBot(bot,dt){
 }
 function botFire(bot,dist){
   const from=_v3.clone();
-  const hitChance=clamp(0.52-dist*0.011,0.08,0.55)+difficulty*0.12;
+  const hitChance=clamp(0.52-dist*0.011,0.08,0.55)+diffPreset.aim+difficulty*0.12;
   const hit=Math.random()<hitChance&&player.invuln<=0;
   const target=_v2.clone();
   if(!hit){target.x+=rand(-1.6,1.6);target.y+=rand(-0.6,1.2);target.z+=rand(-1.6,1.6);}
@@ -725,7 +767,7 @@ function botFire(bot,dist){
   spawnBurst(from,0xffaa33,4,3,0.25);
   sfxShoot('enemy');
   if(hit&&player.alive){
-    damagePlayer(rand(6,11)+difficulty*4,bot.name);
+    damagePlayer((rand(6,11)+difficulty*4)*diffPreset.dmg,bot.name);
   }
 }
 
@@ -833,7 +875,7 @@ function checkAutoTarget(){
   _origin.copy(camera.position);
   raycaster.set(_origin,_dir);
   const targets=[];
-  for(const b of bots)if(b.alive)targets.push(...b.hitMeshes);
+  for(const b of bots)if(b.enabled&&b.alive)targets.push(...b.hitMeshes);
   const hits=raycaster.intersectObjects(targets,false);
   if(hits.length>0&&hits[0].distance<40)autoTarget=true;
   $('cross').classList.toggle('hot',autoTarget);
@@ -866,7 +908,7 @@ function tryFire(){
     _v1.normalize();
     raycaster.set(_origin,_v1);
     const targets=[];
-    for(const b of bots)if(b.alive)targets.push(...b.hitMeshes);
+    for(const b of bots)if(b.enabled&&b.alive)targets.push(...b.hitMeshes);
     const all=targets.concat(colliderMeshes);
     const hits=raycaster.intersectObjects(all,false);
     let end=null;
@@ -891,7 +933,7 @@ function tryFire(){
 function damageBot(bot,dmg,point,headshot){
   bot.hp-=dmg;
   bot.mat.emissive.setHex(0x666666); bot.flashT=0.07;
-  bot.hpFg.scale.x=clamp(bot.hp/100,0,1);
+  bot.hpFg.scale.x=clamp(bot.hp/bot.maxHp,0,1);
   bot.hpFg.material.color.setHex(bot.hp>50?0x33ff66:(bot.hp>25?0xffcc33:0xff3333));
   spawnBurst(point,headshot?0xffd23f:0xff5555,headshot?12:7,5,0.4);
   spawnDmgNum(point.clone(),Math.round(dmg),headshot?'head':'');
@@ -1084,13 +1126,15 @@ function resetGame(){
   player.streak=0; player.bestStreak=0; player.multi=0; player.multiT=0;
   player.score=0; player.shake=0; player.fovKick=0; player.bloom=0;
   elapsed=0; difficulty=0;
+  diffPreset=DIFFS[gameCfg.diffIdx];
+  matchLen=LEN_OPTS[gameCfg.lenIdx].s;
   gun.visible=true;
   $('wpnName').textContent='冲锋枪'; $('wpnName').style.color='#00ffcc';
   gunGlow.material.color.setHex(0x00ffcc);
   $('score').textContent='0 击杀';
   $('killfeed').innerHTML=''; $('reloadTip').style.display='none';
   $('lowhp').classList.remove('on'); $('flash').style.opacity=0;
-  for(const b of bots)respawnBot(b,true);
+  applyBotCount();
   for(const p of pickups){p.cd=0;p.g.visible=true;}
   for(let i=orbs.length-1;i>=0;i--){scene.remove(orbs[i].m);} orbs.length=0;
   updateHpHUD(); updateAmmoHUD();
@@ -1121,6 +1165,35 @@ $('againBtn').addEventListener('click',startGame);
 $('ctrlHint').innerHTML=IS_TOUCH?
   '左拇指摇杆移动 · 右半屏滑动视角 · 🎯默认自动开火<br/>准星变红=锁定，接近敌人自动射击':
   '点击画面锁定鼠标 · WASD 移动 · 鼠标视角 · 左键射击<br/>R 换弹 · 1/2/3 切换武器 · 空格跳';
+/* ================= 开始页面选项 ================= */
+function updateFeat(){
+  $('featMode').textContent=ENEMY_OPTS[gameCfg.enemyIdx]+' 个敌人 · '+
+    DIFFS[gameCfg.diffIdx].name+'难度 · '+LEN_OPTS[gameCfg.lenIdx].t;
+}
+function buildOptions(){
+  const rows=[
+    ['rowEnemies',ENEMY_OPTS.map(n=>n+' 个'),gameCfg.enemyIdx,i=>{gameCfg.enemyIdx=i;applyBotCount();}],
+    ['rowDiff',DIFFS.map(d=>d.name),gameCfg.diffIdx,i=>{gameCfg.diffIdx=i;}],
+    ['rowLen',LEN_OPTS.map(l=>l.t),gameCfg.lenIdx,i=>{gameCfg.lenIdx=i;}]
+  ];
+  const labs=['敌人数量','敌人难度','对战时长'];
+  rows.forEach((r,ri)=>{
+    const row=$(r[0]); row.innerHTML='';
+    const s=document.createElement('span'); s.className='olab'; s.textContent=labs[ri];
+    row.appendChild(s);
+    r[1].forEach((t,i)=>{
+      const b=document.createElement('button');
+      b.className='optBtn'+(i===r[2]?' sel':''); b.textContent=t;
+      b.addEventListener('click',()=>{initAudio();sfxPickup();r[3](i);buildOptions();});
+      row.appendChild(b);
+    });
+  });
+  updateFeat();
+}
+$('menuBtn').addEventListener('click',()=>{
+  resetGame(); state='menu';
+  $('over').style.display='none'; $('menu').style.display='flex';
+});
 /* ================= 玩家更新 ================= */
 function updatePlayer(dt){
   if(!player.alive){
@@ -1224,7 +1297,9 @@ addEventListener('resize',()=>{
   renderer.setSize(window.innerWidth,window.innerHeight);
 });
 /* 初始化 */
-for(let i=0;i<5;i++)makeBot(i);
+for(let i=0;i<MAX_BOTS;i++)makeBot(i);
+buildOptions();
+applyBotCount();
 for(const s of PICKUP_SPOTS)makePickup(s);
 updateHpHUD(); updateAmmoHUD();
 requestAnimationFrame(loop);
