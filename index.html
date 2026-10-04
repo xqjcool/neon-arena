@@ -25,7 +25,8 @@
   #hpfill{height:100%;width:100%;border-radius:6px;
     background:linear-gradient(90deg,#00ff9d,#00e5ff);transition:width .15s;}
   #hptext{font-size:12px;margin-top:3px;color:#9ff;letter-spacing:1px;}
-  #wpn{position:absolute;top:calc(12px + env(safe-area-inset-top));right:14px;text-align:right;}
+  #wpn{position:absolute;top:calc(12px + env(safe-area-inset-top));right:14px;text-align:right;max-width:44vw;}
+  #wpn .hbtn{margin-left:6px;margin-bottom:6px;}
   #wpnName{font-size:15px;font-weight:700;color:#0ff;text-shadow:0 0 8px #0ff;}
   #ammo{font-size:26px;font-weight:800;color:#fff;}
   #ammo.low{color:#ff4455;animation:blink .5s infinite alternate;}
@@ -70,6 +71,16 @@
   /* flashes */
   #flash{position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 40%,rgba(255,20,40,.55));
     opacity:0;}
+  #flashWhite{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;}
+  #scope{position:absolute;inset:0;display:none;pointer-events:none;background:radial-gradient(circle at center,transparent 31vmin,#000 32vmin);}
+  #scope .scopeRing{position:absolute;left:50%;top:50%;width:64vmin;height:64vmin;transform:translate(-50%,-50%);
+    border:2px solid #111;border-radius:50%;box-shadow:0 0 0 2px rgba(0,0,0,.9), inset 0 0 40px rgba(0,0,0,.6);}
+  #scope .scopeH{position:absolute;left:50%;top:50%;width:64vmin;height:2px;transform:translate(-50%,-50%);background:#111;}
+  #scope .scopeV{position:absolute;left:50%;top:50%;width:2px;height:64vmin;transform:translate(-50%,-50%);background:#111;}
+  #armorbar{display:none;height:8px;margin-top:4px;background:rgba(255,255,255,.12);border:1px solid rgba(68,136,255,.6);
+    border-radius:4px;overflow:hidden;}
+  #armorfill{height:100%;width:0%;background:linear-gradient(90deg,#4488ff,#66ccff);}
+  #nadeLine{font-size:12px;color:#ffd23f;margin-top:2px;letter-spacing:1px;}
   #lowhp{position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 55%,rgba(255,0,30,.5));
     opacity:0;}
   #lowhp.on{animation:lowpulse 1s infinite;}
@@ -125,10 +136,10 @@
 
   <div id="hud" class="layer">
     <div id="topbar"><div id="timer">3:00</div><div id="score">0 击杀</div></div>
-    <div id="hpwrap"><div id="hpbar"><div id="hpfill"></div></div><div id="hptext">HP 100</div></div>
+    <div id="hpwrap"><div id="hpbar"><div id="hpfill"></div></div><div id="armorbar"><div id="armorfill"></div></div><div id="hptext">HP 100</div></div>
     <div id="wpn">
-      <div id="wpnName">MP5</div><div id="ammo">30</div><br/>
-      <button class="hbtn" id="muteBtn">🔊</button><button class="hbtn" id="autoBtn">🎯</button><button class="hbtn" id="fsBtn">⛶</button><button class="hbtn" id="qBtn">✨</button>
+      <div id="wpnName">MP5</div><div id="ammo">30</div><div id="nadeLine">💣×1 ⚡×1 💨×1</div><br/>
+      <button class="hbtn" id="muteBtn">🔊</button><button class="hbtn" id="autoBtn">🎯</button><button class="hbtn" id="fsBtn">⛶</button><button class="hbtn" id="qBtn">✨</button><button class="hbtn" id="scopeBtn">🔭</button><button class="hbtn" id="nadeBtn">💣</button>
     </div>
     <div id="cross"><span class="l t"></span><span class="l b"></span><span class="l lft"></span><span class="l rgt"></span><span class="l dot"></span></div>
     <div id="hitm"><span class="a"></span><span class="b"></span><span class="c"></span><span class="d"></span></div>
@@ -137,6 +148,8 @@
     <div id="killfeed"></div>
     <div id="dmgnums"></div>
     <div id="flash"></div>
+    <div id="flashWhite"></div>
+    <div id="scope"><div class="scopeRing"></div><div class="scopeH"></div><div class="scopeV"></div></div>
     <div id="lowhp"></div>
   </div>
 
@@ -145,6 +158,7 @@
     <div class="tbtn" id="fireBtn">开火</div>
     <div class="tbtn" id="jumpBtn">跳</div>
     <div class="tbtn" id="reloadBtnT">换弹</div>
+    <div class="tbtn" id="wpnBtnT" style="right:140px;bottom:calc(150px + env(safe-area-inset-bottom));width:56px;height:56px;font-size:13px;background:rgba(0,255,204,.18);border:2px solid #00ffcc;color:#00ffcc;">切枪</div>
   </div>
 
   <div id="menu" class="screen">
@@ -158,7 +172,8 @@
     <div class="feats">
       🔫 <b id="featMode">5 个敌人 · 普通难度 · 3 分钟</b>死斗<br/>
       🎯 <b>手机自动开火</b>：准星变红自动射击 · 💥 <b>爆头双倍伤害</b><br/>
-      📦 拾取 <b>AK-47 / Nova / 医疗包</b> · 🏆 连杀播报：双杀、三杀、暴走
+      📦 拾取 <b>AK-47 / Nova / AWP / 护甲</b> · 🏆 连杀播报：双杀、三杀、暴走<br/>
+      💣 <b>G 键扔手雷</b>（高爆/闪光/烟雾） · 🔭 <b>AWP 右键开镜</b>
     </div>
     <button class="bigbtn" id="startBtn">开始战斗</button>
     <div class="hint" id="ctrlHint"></div>
@@ -239,6 +254,7 @@ const GUN_SND={
   smg:    {crack:2500,body:1300,bodyT:0.13,thump:100,thumpT:0.15,v:0.85}, // MP5：脆
   rifle:  {crack:1400,body:620, bodyT:0.24,thump:68, thumpT:0.26,v:1.0},  // AK-47：沉
   shotgun:{crack:800, body:380, bodyT:0.34,thump:52, thumpT:0.36,v:1.1},  // Nova：轰
+  awp:    {crack:1000,body:500, bodyT:0.30,thump:55, thumpT:0.35,v:1.15}, // AWP：重炮
   enemy:  {crack:1800,body:1000,bodyT:0.12,thump:90, thumpT:0.14,v:0.35}
 };
 function sfxShoot(k){
@@ -832,9 +848,10 @@ function hasLOS(from,to){
 const WEAPONS={
   smg:    {name:'MP5',  dmg:12,interval:0.11,mag:30,reload:1.3,spread:0.028,pellets:1,auto:true, kick:0.0035,color:0x00ffcc,mz:-1.06},
   rifle:  {name:'AK-47',dmg:26,interval:0.17,mag:20,reload:1.8,spread:0.011,pellets:1,auto:true, kick:0.006, color:0xffaa00,mz:-1.32},
-  shotgun:{name:'Nova', dmg:9, interval:0.85,mag:6, reload:2.2,spread:0.075,pellets:8,auto:false,kick:0.02,  color:0xff3355,mz:-1.12}
+  shotgun:{name:'Nova', dmg:9, interval:0.85,mag:6, reload:2.2,spread:0.075,pellets:8,auto:false,kick:0.02,  color:0xff3355,mz:-1.12},
+  awp:    {name:'AWP',  dmg:105,interval:1.5,mag:5, reload:3.2,spread:0.09, pellets:1,auto:false,kick:0.035, color:0x66ccff,mz:-1.34,scopedSpread:0.0008}
 };
-const WEAPON_ORDER=['smg','rifle','shotgun'];
+const WEAPON_ORDER=['smg','rifle','shotgun','awp'];
 
 /* ================= 玩家 ================= */
 const EYE=1.62;
@@ -843,10 +860,12 @@ const player={
   yaw:Math.PI,pitch:0,hp:100,alive:true,respawnT:0,invuln:0,
   owned:{smg:true},cur:'smg',ammo:{smg:30},reloading:0,fireCd:0,
   kills:0,deaths:0,shots:0,hits:0,streak:0,bestStreak:0,multi:0,multiT:0,
-  bobT:0,shake:0,fovKick:0,bloom:0
+  bobT:0,shake:0,fovKick:0,bloom:0,
+  armor:0,nades:{he:1,flash:1,smoke:1},blindT:0,scoped:false
 };
 function switchWeapon(key){
   if(!player.owned[key]||player.cur===key||player.reloading>0)return;
+  if(player.scoped){player.scoped=false;applyScope();}
   player.cur=key; player.fireCd=Math.max(player.fireCd,0.25);
   const w=WEAPONS[key];
   $('wpnName').textContent=w.name;
@@ -899,6 +918,18 @@ function buildGunModel(key){
     const gr=part(new THREE.BoxGeometry(0.05,0.11,0.065),woodD,0,-0.10,0.13); gr.rotation.x=0.3;
     const st=part(new THREE.BoxGeometry(0.075,0.12,0.26),wood,0,-0.015,0.35); st.rotation.x=-0.06;
     part(new THREE.BoxGeometry(0.02,0.025,0.09),steel,0.056,0.03,-0.06);
+  }else if(key==='awp'){ /* ===== AWP ===== */
+    part(new THREE.BoxGeometry(0.09,0.14,0.55),steel,0,0,-0.05);
+    part(new THREE.BoxGeometry(0.08,0.10,0.28),black,0,0.0,-0.30);
+    tube(0.018,0.45,steel,0,0.02,-0.55);
+    tube(0.026,0.06,black,0,0.02,-0.78);
+    const mg=part(new THREE.BoxGeometry(0.06,0.20,0.09),black,0,-0.15,0.0); mg.rotation.x=0.1;
+    const st=part(new THREE.BoxGeometry(0.08,0.13,0.24),black,0,-0.02,0.30); st.rotation.x=-0.05;
+    tube(0.032,0.22,black,0,0.115,-0.12);
+    part(new THREE.BoxGeometry(0.02,0.05,0.02),steel,0,0.075,-0.12);
+    const obj=part(new THREE.CylinderGeometry(0.038,0.038,0.03,12),black,0,0.115,-0.23);
+    obj.rotation.x=Math.PI/2;
+    part(new THREE.BoxGeometry(0.014,0.04,0.014),steel,0,0.07,-0.62);
   }else{ /* ===== Nova 霰弹枪 ===== */
     part(new THREE.BoxGeometry(0.095,0.145,0.40),steel,0,0,-0.04);
     tube(0.028,0.34,steel,0,0.035,-0.40);
@@ -917,6 +948,22 @@ for(const k of WEAPON_ORDER)gunModels[k]=buildGunModel(k);
 function setGunModel(key){
   gun.clear();
   gun.add(gunModels[key]);
+}
+/* ================= AWP 开镜 ================= */
+const sfxScope=()=>{tone(1200,0.05,'square',0.08);tone(900,0.06,'square',0.08,null,0.06);};
+function applyScope(){
+  const s=player.scoped;
+  camera.fov=s?22:75; camera.updateProjectionMatrix();
+  $('scope').style.display=s?'block':'none';
+  $('cross').style.display=s?'none':'block';
+  gun.visible=!s;
+}
+function toggleScope(){
+  if(state!=='playing'||!player.alive||player.cur!=='awp'||player.reloading>0)return;
+  initAudio();
+  player.scoped=!player.scoped;
+  applyScope();
+  sfxScope();
 }
 gun.position.set(0.27,-0.25,-0.55);
 camera.add(gun);
@@ -941,9 +988,11 @@ addEventListener('keydown',e=>{
   keys[e.code]=true;
   if(state!=='playing')return;
   if(e.code==='KeyR')startReload();
+  if(e.code==='KeyG')throwNade();
   if(e.code==='Digit1')switchWeapon('smg');
   if(e.code==='Digit2')switchWeapon('rifle');
   if(e.code==='Digit3')switchWeapon('shotgun');
+  if(e.code==='Digit4')switchWeapon('awp');
 });
 addEventListener('keyup',e=>{keys[e.code]=false;});
 addEventListener('contextmenu',e=>e.preventDefault());
@@ -959,11 +1008,13 @@ document.addEventListener('pointerlockchange',()=>{
 });
 document.addEventListener('mousemove',e=>{
   if(!pointerLocked||state!=='playing')return;
-  player.yaw-=e.movementX*0.0023;
-  player.pitch=clamp(player.pitch-e.movementY*0.0023,-1.45,1.45);
+  const sens=player.scoped?0.0008:0.0023;
+  player.yaw-=e.movementX*sens;
+  player.pitch=clamp(player.pitch-e.movementY*sens,-1.45,1.45);
 });
 document.addEventListener('mousedown',e=>{
   if(e.button===0&&pointerLocked&&state==='playing'){initAudio();firing=true;}
+  if(e.button===2&&pointerLocked&&state==='playing'){initAudio();toggleScope();}
 });
 document.addEventListener('mouseup',e=>{if(e.button===0)firing=false;});
 /* ---- 触屏：左摇杆 / 右滑视角 / 按钮 ---- */
@@ -1000,8 +1051,9 @@ document.addEventListener('touchmove',e=>{
     }else if(t.identifier===lookId){
       const dx=t.clientX-lookLX,dy=t.clientY-lookLY;
       lookLX=t.clientX; lookLY=t.clientY;
-      player.yaw-=dx*0.0044;
-      player.pitch=clamp(player.pitch-dy*0.0044,-1.45,1.45);
+      const sens=player.scoped?0.0015:0.0044;
+      player.yaw-=dx*sens;
+      player.pitch=clamp(player.pitch-dy*sens,-1.45,1.45);
     }
   }
   if(e.cancelable)e.preventDefault();
@@ -1045,6 +1097,16 @@ $('qBtn').addEventListener('click',()=>{
   applyQuality(gameCfg.qIdx===1?0:1);
   buildOptions();
 });
+$('scopeBtn').addEventListener('click',()=>{toggleScope();});
+$('nadeBtn').addEventListener('click',()=>{throwNade();});
+function cycleWeapon(){
+  initAudio();
+  const owned=WEAPON_ORDER.filter(k=>player.owned[k]);
+  if(owned.length<2)return;
+  const i=owned.indexOf(player.cur);
+  switchWeapon(owned[(i+1)%owned.length]);
+}
+$('wpnBtnT').addEventListener('touchstart',e=>{e.preventDefault();e.stopPropagation();cycleWeapon();},{passive:false});
 // 点武器栏循环切换已拥有的武器（触屏用）
 $('wpn').style.pointerEvents='auto';
 $('wpn').style.cursor='pointer';
@@ -1127,7 +1189,7 @@ function makeBot(idx){
   const bot={
     idx:idx,name:BOT_NAMES[idx%BOT_NAMES.length],g:g,flashMats:[uniM,vestM,helmM,skinM],hitMeshes:[],
     legL:null,legR:null,rifle:null,muzzleTip:null,muzFlash:null,
-    recoil:0,muzT:0,dying:false,dieT:0,
+    recoil:0,muzT:0,dying:false,dieT:0,blindT:0,
     pos:new THREE.Vector3(),hp:100,maxHp:100,alive:true,respawnT:0,enabled:false,
     hpFg:null,speed:rand(5.2,6.6),shootCd:rand(0.6,1.6),reaction:0,
     strafDir:Math.random()<0.5?1:-1,strafT:rand(1,2.4),flashT:0,walkPhase:rand(0,6)
@@ -1279,12 +1341,14 @@ function updateBot(bot,dt){
   if(bot.muzT>0){bot.muzT-=dt; if(bot.muzT<=0)bot.muzFlash.visible=false;}
   if(bot.flashT>0){bot.flashT-=dt;if(bot.flashT<=0)for(const m of bot.flashMats)m.emissive.setHex(0x000000);}
   if(!player.alive)return;
-  // 开火
+  // 开火（致盲时停火）
+  if(bot.blindT>0){bot.blindT-=dt;}
+  else{
   bot.shootCd-=dt;
   if(bot.shootCd<=0&&dist<34){
     botEyePos(bot,_v3);
     _v2.set(player.pos.x,EYE+player.y,player.pos.z);
-    if(hasLOS(_v3,_v2)){bot.reaction=0.3;bot.shootCd=rand(0.75,1.5)*diffPreset.cd*(1-difficulty*0.3);}
+    if(hasLOS(_v3,_v2)&&!smokeBlocked(_v3,_v2)){bot.reaction=0.3;bot.shootCd=rand(0.75,1.5)*diffPreset.cd*(1-difficulty*0.3);}
     else bot.shootCd=0.35;
   }
   if(bot.reaction>0){
@@ -1292,8 +1356,9 @@ function updateBot(bot,dt){
     if(bot.reaction<=0&&player.alive){
       botEyePos(bot,_v3);
       _v2.set(player.pos.x,EYE+player.y,player.pos.z);
-      if(hasLOS(_v3,_v2))botFire(bot,dist);
+      if(hasLOS(_v3,_v2)&&!smokeBlocked(_v3,_v2))botFire(bot,dist);
     }
+  }
   }
 }
 function botFire(bot,dist){
@@ -1443,13 +1508,15 @@ function tryFire(){
   muzzle.material.opacity=0.95;
   muzzleLight.intensity=30;
   sfxShoot(player.cur);
+  if(player.cur==='awp'&&player.scoped){player.scoped=false;applyScope();} // AWP 开火后退镜
   camera.getWorldDirection(_dir);
   _origin.copy(camera.position);
   const from=_origin.clone().add(_dir.clone().multiplyScalar(0.6));
   let anyHit=false;
+  const spread=(player.cur==='awp'&&player.scoped)?w.scopedSpread:w.spread;
   for(let p=0;p<w.pellets;p++){
     _v1.copy(_dir);
-    _v1.x+=rand(-w.spread,w.spread);_v1.y+=rand(-w.spread,w.spread);_v1.z+=rand(-w.spread,w.spread);
+    _v1.x+=rand(-spread,spread);_v1.y+=rand(-spread,spread);_v1.z+=rand(-spread,spread);
     _v1.normalize();
     raycaster.set(_origin,_v1);
     const targets=[];
@@ -1518,6 +1585,7 @@ function killBot(bot,headshot){
 }
 function damagePlayer(dmg,fromName){
   if(!player.alive||player.invuln>0||state!=='playing')return;
+  if(player.armor>0){const ab=Math.min(player.armor,dmg*0.5);player.armor-=ab;dmg-=ab;}
   player.hp-=dmg;
   player.shake=Math.min(1,player.shake+0.35);
   $('flash').style.opacity=0.85;
@@ -1540,11 +1608,14 @@ function damagePlayer(dmg,fromName){
 const pickups=[];
 const PICKUP_SPOTS=[
   {x:-14,z:-14,type:'rifle'},{x:14,z:-14,type:'shotgun'},
-  {x:-14,z:14,type:'health'},{x:14,z:14,type:'health'},{x:0,z:0,type:'rifle'}
+  {x:-14,z:14,type:'health'},{x:14,z:14,type:'health'},{x:0,z:0,type:'rifle'},
+  {x:0,z:-19,type:'awp'},{x:-19,z:0,type:'armor'},{x:19,z:0,type:'armor'}
 ];
 const PICKUP_STYLE={
   rifle:{color:0xffaa00,label:'AK-47'},
   shotgun:{color:0xff3355,label:'Nova'},
+  awp:{color:0x66ccff,label:'AWP'},
+  armor:{color:0x4488ff,label:'护甲+50'},
   health:{color:0x33ff66,label:'医疗包+40'}
 };
 function makePickup(spot){
@@ -1577,6 +1648,9 @@ function updatePickups(dt){
       if(p.type==='health'){
         if(player.hp>=100)continue;
         player.hp=Math.min(100,player.hp+40); updateHpHUD();
+      }else if(p.type==='armor'){
+        if(player.armor>=100)continue;
+        player.armor=Math.min(100,player.armor+50); updateHpHUD();
       }else{
         player.owned[p.type]=true;
         player.ammo[p.type]=WEAPONS[p.type].mag;
@@ -1628,6 +1702,9 @@ function updateHpHUD(){
     (pct>25?'linear-gradient(90deg,#ffcc33,#ff9933)':'linear-gradient(90deg,#ff3344,#ff6655)');
   $('hptext').textContent='HP '+Math.ceil(pct);
   $('lowhp').classList.toggle('on',pct<=30&&pct>0&&player.alive);
+  const ap=clamp(player.armor,0,100);
+  $('armorfill').style.width=ap+'%';
+  $('armorbar').style.display=ap>0?'block':'none';
 }
 function updateAmmoHUD(){
   const a=$('ammo');
@@ -1657,9 +1734,128 @@ function feedKill(killer,victim,me){
 function startReload(){
   const w=WEAPONS[player.cur];
   if(player.reloading>0||!player.alive||player.ammo[player.cur]>=w.mag)return;
+  if(player.scoped){player.scoped=false;applyScope();}
   player.reloading=w.reload;
   $('reloadTip').style.display='block';
   sfxReload(w.reload); updateAmmoHUD();
+}
+/* ================= 手雷：高爆 / 闪光 / 烟雾 ================= */
+const nades=[];
+const smokes=[];
+const NADE_ORDER=['he','flash','smoke'];
+const NADE_STYLE={he:{icon:'💣',name:'高爆雷'},flash:{icon:'⚡',name:'闪光弹'},smoke:{icon:'💨',name:'烟雾弹'}};
+const sfxThrow=()=>{if(AC&&!muted)nzBurst(AC.currentTime,0.15,0.12,'bandpass',1200);};
+function throwNade(){
+  if(state!=='playing'||!player.alive||player.reloading>0)return;
+  const type=NADE_ORDER.find(t=>player.nades[t]>0);
+  if(!type){announce('没有手雷了');sfxEmpty();return;}
+  player.nades[type]--;
+  initAudio();
+  const dir=new THREE.Vector3(); camera.getWorldDirection(dir);
+  const m=new THREE.Mesh(new THREE.SphereGeometry(0.09,8,8),
+    new THREE.MeshStandardMaterial({color:type==='flash'?0xcccccc:0x2a4a2a,roughness:0.5,metalness:0.4}));
+  m.position.copy(camera.position).addScaledVector(dir,0.6); m.position.y-=0.1;
+  m.castShadow=true; scene.add(m);
+  const vel=dir.clone().multiplyScalar(17); vel.y+=3.5;
+  nades.push({m:m,vel:vel,type:type,t:0,fuse:type==='he'?1.6:(type==='flash'?1.4:1.1)});
+  sfxThrow(); updateNadeHUD();
+}
+function updateNades(dt){
+  for(let i=nades.length-1;i>=0;i--){
+    const n=nades[i]; n.t+=dt;
+    n.vel.y-=20*dt;
+    n.m.position.addScaledVector(n.vel,dt);
+    const p=n.m.position;
+    if(p.y<0.09){p.y=0.09; n.vel.y*=-0.35; n.vel.x*=0.7; n.vel.z*=0.7;}
+    collideCircle(p,0.12);
+    if(n.t>=n.fuse){detonateNade(n); nades.splice(i,1);}
+  }
+}
+function detonateNade(n){
+  const pos=n.m.position.clone(); scene.remove(n.m);
+  if(n.type==='he')explodeHE(pos);
+  else if(n.type==='flash')explodeFlash(pos);
+  else explodeSmoke(pos);
+}
+function explodeHE(pos){
+  spawnBurst(pos,0xffaa33,40,10,0.8); spawnBurst(pos,0xff5522,25,7,0.6); spawnBurst(pos,0x999999,15,4,1.0);
+  boomLight.position.copy(pos); boomLight.position.y+=1; boomLight.intensity=90;
+  if(AC&&!muted){const t=AC.currentTime; nzBurst(t,0.5,0.7,'lowpass',300); thumpSfx(t,45,0.6,0.8);}
+  for(const b of bots){
+    if(!b.alive||b.dying||!b.enabled)continue;
+    const d=Math.hypot(b.pos.x-pos.x,b.pos.z-pos.z);
+    if(d<10)damageBot(b,Math.max(12,135*(1-d/10)),new THREE.Vector3(b.pos.x,1.2,b.pos.z),false);
+  }
+  const pd=Math.hypot(player.pos.x-pos.x,player.pos.z-pos.z);
+  if(pd<7&&player.alive)damagePlayer(60*(1-pd/7)*0.5,'手雷');
+  player.shake=Math.min(1,player.shake+clamp(1-pd/12,0,1)*0.7);
+  announce('💥 高爆雷！');
+}
+function explodeFlash(pos){
+  spawnBurst(pos,0xffffff,25,6,0.4);
+  if(AC&&!muted){const t=AC.currentTime; nzBurst(t,0.12,0.5,'highpass',4000); tone(2800,0.5,'sine',0.10,2600);}
+  const eye=new THREE.Vector3(player.pos.x,EYE+player.y,player.pos.z);
+  const toF=pos.clone().sub(eye); const dist=toF.length(); toF.normalize();
+  const fwd=new THREE.Vector3(); camera.getWorldDirection(fwd);
+  const facing=fwd.dot(toF);
+  if(dist<28&&facing>0.25&&hasLOS(pos,eye))
+    player.blindT=Math.max(player.blindT,(3.0*(1-dist/28)+0.5)*clamp((facing-0.25)/0.75,0.2,1));
+  for(const b of bots){
+    if(!b.alive||b.dying||!b.enabled)continue;
+    _v1.set(b.pos.x-pos.x,0,b.pos.z-pos.z);
+    if(_v1.length()<22){botEyePos(b,_v2); if(hasLOS(pos,_v2))b.blindT=2.2;}
+  }
+  announce('⚡ 闪光弹！');
+}
+let smokeTex=null;
+function getSmokeTex(){
+  if(smokeTex)return smokeTex;
+  const c=document.createElement('canvas'); c.width=c.height=128;
+  const x=c.getContext('2d');
+  const gr=x.createRadialGradient(64,64,8,64,64,64);
+  gr.addColorStop(0,'rgba(200,200,200,0.85)');
+  gr.addColorStop(0.6,'rgba(180,180,180,0.45)');
+  gr.addColorStop(1,'rgba(160,160,160,0)');
+  x.fillStyle=gr; x.fillRect(0,0,128,128);
+  smokeTex=new THREE.CanvasTexture(c);
+  return smokeTex;
+}
+function explodeSmoke(pos){
+  if(AC&&!muted)nzBurst(AC.currentTime,0.5,0.2,'lowpass',900);
+  for(let i=0;i<10;i++){
+    const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:getSmokeTex(),transparent:true,opacity:0,depthWrite:false}));
+    const a=Math.random()*Math.PI*2, r=Math.random()*2.2;
+    sp.position.set(pos.x+Math.cos(a)*r,0.8+Math.random()*1.6,pos.z+Math.sin(a)*r);
+    const s=3+Math.random()*2; sp.scale.set(s,s,1);
+    scene.add(sp);
+    smokes.push({sp:sp,t:0,life:14,seed:Math.random()*10});
+  }
+  announce('💨 烟雾弹！');
+}
+const _sv1=new THREE.Vector3(),_sv2=new THREE.Vector3(),_sv3=new THREE.Vector3();
+function smokeBlocked(a,b){
+  for(const s of smokes){
+    if(s.t<1||s.t>s.life-2)continue;
+    const p=s.sp.position;
+    _sv1.copy(b).sub(a); _sv2.copy(p).sub(a);
+    const tt=clamp(_sv2.dot(_sv1)/Math.max(0.001,_sv1.lengthSq()),0,1);
+    _sv3.copy(a).addScaledVector(_sv1,tt);
+    if(_sv3.distanceTo(p)<2.0)return true;
+  }
+  return false;
+}
+function updateSmokes(dt){
+  for(let i=smokes.length-1;i>=0;i--){
+    const s=smokes[i]; s.t+=dt;
+    s.sp.position.y+=dt*0.25;
+    s.sp.position.x+=Math.sin(s.t*0.7+s.seed)*dt*0.3;
+    const k=1-s.t/s.life;
+    s.sp.material.opacity=0.8*Math.min(1,k*3)*Math.min(1,s.t*2);
+    if(s.t>=s.life){scene.remove(s.sp); s.sp.material.dispose(); smokes.splice(i,1);}
+  }
+}
+function updateNadeHUD(){
+  $('nadeLine').textContent='💣×'+player.nades.he+' ⚡×'+player.nades.flash+' 💨×'+player.nades.smoke;
 }
 /* ================= 游戏流程 ================= */
 let state='menu';
@@ -1673,12 +1869,17 @@ function resetGame(){
   player.kills=0; player.deaths=0; player.shots=0; player.hits=0;
   player.streak=0; player.bestStreak=0; player.multi=0; player.multiT=0;
   player.score=0; player.shake=0; player.fovKick=0; player.bloom=0;
+  player.armor=0; player.nades={he:1,flash:1,smoke:1}; player.blindT=0; player.scoped=false;
+  for(const n of nades)scene.remove(n.m); nades.length=0;
+  for(const s of smokes){scene.remove(s.sp); s.sp.material.dispose();} smokes.length=0;
   elapsed=0; difficulty=0;
   diffPreset=DIFFS[gameCfg.diffIdx];
   matchLen=LEN_OPTS[gameCfg.lenIdx].s;
   applyScene(gameCfg.sceneIdx);
   applyQuality(gameCfg.qIdx);
   gun.visible=true;
+  applyScope();
+  updateNadeHUD();
   $('wpnName').textContent='MP5'; $('wpnName').style.color='#00ffcc';
   setGunModel('smg');
   muzzle.position.set(0.27,-0.19,WEAPONS.smg.mz);
@@ -1813,7 +2014,7 @@ function updatePlayer(dt){
   // 枪械动画
   gunKick=Math.max(0,gunKick-dt*0.9);
   gun.position.z=-0.55+gunKick;
-  gun.visible=player.invuln<=0||Math.floor(elapsed*10)%2===0; // 无敌闪烁
+  gun.visible=!player.scoped&&(player.invuln<=0||Math.floor(elapsed*10)%2===0); // 无敌闪烁（开镜时隐藏枪）
   if(muzzleT>0){muzzleT-=dt;if(muzzleT<=0)muzzle.material.opacity=0;}
   // 计时
   elapsed+=dt;
@@ -1835,6 +2036,10 @@ function loop(t){
     for(const b of bots)updateBot(b,dt);
     updatePickups(dt);
     updateOrbs(dt);
+    updateNades(dt);
+    updateSmokes(dt);
+    if(player.blindT>0){player.blindT-=dt;$('flashWhite').style.opacity=clamp(player.blindT/2,0.15,1);}
+    else $('flashWhite').style.opacity=0;
   }else if(state==='menu'){
     menuAngle+=dt*0.12;
     camera.position.set(Math.sin(menuAngle)*30,12,Math.cos(menuAngle)*30);
