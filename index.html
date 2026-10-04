@@ -291,7 +291,7 @@ function canvasToNormal(canvas,strength){
 function makeConcreteTexture(){
   const c=document.createElement('canvas'); c.width=c.height=512;
   const g=c.getContext('2d');
-  g.fillStyle='#232529'; g.fillRect(0,0,512,512);
+  g.fillStyle='#5b5e66'; g.fillRect(0,0,512,512);
   for(let i=0;i<40;i++){ // 大块明暗斑
     const x=Math.random()*512,y=Math.random()*512,r=rand(40,130);
     const v=Math.random()<0.5?'255,255,255':'0,0,0';
@@ -359,7 +359,7 @@ function makeCrateTexture(hazard){
   const c=document.createElement('canvas'); c.width=c.height=256;
   const g=c.getContext('2d');
   const edge=hazard?'255,150,40':'0,255,230';
-  g.fillStyle=hazard?'#231408':'#141c2a'; g.fillRect(0,0,256,256);
+  g.fillStyle=hazard?'#54402a':'#3d4456'; g.fillRect(0,0,256,256);
   for(let i=0;i<500;i++){ // 金属拉丝噪点
     g.fillStyle='rgba(255,255,255,'+(Math.random()*0.04)+')';
     g.fillRect(Math.random()*256,Math.random()*256,2,1);
@@ -394,8 +394,8 @@ const SCENES=[
    stars:0,clouds:true,sunY:200,sunR:58,sunCol:'#fff8e0',sunGlow:'255,250,220',
    city:'#1c2740',winA:0.15,
    fog:0xc8dcee,fogN:50,fogF:150,
-   sunC:0xfff3da,sunI:1.7,sunPos:[30,55,20],
-   hemiS:0xcfe4ff,hemiG:0x445566,hemiI:1.0,accent:0.25,lamp:0.15},
+   sunC:0xfff3da,sunI:2.0,sunPos:[30,55,20],
+   hemiS:0xcfe4ff,hemiG:0x445566,hemiI:1.15,accent:0.25,lamp:0.15},
   {name:'黎明', top:'#141238',mid:'#6a2f6e',hor:'#ff9e58',low:'#0c0c16',
    stars:120,clouds:false,sunY:465,sunR:68,sunCol:'#ffcf9a',sunGlow:'255,170,110',
    city:'#080810',winA:0.5,
@@ -475,6 +475,20 @@ function makeSkyTexture(s){
 }
 let skyMesh=null;
 const skyCache={};
+/* 用当前天空生成 PBR 环境反射：金属不再发黑，随场景明暗自动匹配 */
+const pmrem=new THREE.PMREMGenerator(renderer);
+const envCache={};
+function updateEnv(i){
+  if(!envCache[i]){
+    const es=new THREE.Scene();
+    es.add(new THREE.Mesh(
+      new THREE.SphereGeometry(50,16,12),
+      new THREE.MeshBasicMaterial({map:skyCache[i],side:THREE.BackSide})
+    ));
+    envCache[i]=pmrem.fromScene(es,0.04).texture;
+  }
+  scene.environment=envCache[i];
+}
 function applyScene(i){
   gameCfg.sceneIdx=i;
   const s=SCENES[i];
@@ -486,16 +500,17 @@ function applyScene(i){
   hemi.color.setHex(s.hemiS); hemi.groundColor.setHex(s.hemiG); hemi.intensity=s.hemiI;
   pl1.intensity=60*s.accent; pl2.intensity=60*s.accent;
   for(const l of lampLights)l.intensity=90*s.lamp;
+  updateEnv(i);
 }
 (function buildArena(){
   const cg=makeConcreteTexture();
   const floor=new THREE.Mesh(
     new THREE.PlaneGeometry(ARENA*2,ARENA*2),
-    new THREE.MeshStandardMaterial({map:cg.map,normalMap:cg.nrm,roughness:0.94,metalness:0.04})
+    new THREE.MeshStandardMaterial({map:cg.map,normalMap:cg.nrm,roughness:0.94,metalness:0.04,envMapIntensity:0.55})
   );
   floor.rotation.x=-Math.PI/2; floor.receiveShadow=true; scene.add(floor);
   const bw=makeBrickTexture();
-  const wallMat=new THREE.MeshStandardMaterial({map:bw.map,normalMap:bw.nrm,roughness:0.9,metalness:0.03});
+  const wallMat=new THREE.MeshStandardMaterial({map:bw.map,normalMap:bw.nrm,roughness:0.9,metalness:0.03,envMapIntensity:0.55});
   const edgeMat=new THREE.MeshBasicMaterial({color:0x00ffff});
   const H=5;
   const walls=[
@@ -513,7 +528,7 @@ function applyScene(i){
   // 中央发光柱
   const pilMat=new THREE.MeshBasicMaterial({color:0xff00ff});
   for(const sx of[-1,1])for(const sz of[-1,1]){
-    const p=new THREE.Mesh(new THREE.CylinderGeometry(0.7,0.9,7,10),new THREE.MeshStandardMaterial({color:0x140a20,roughness:0.65,metalness:0.35}));
+    const p=new THREE.Mesh(new THREE.CylinderGeometry(0.7,0.9,7,10),new THREE.MeshStandardMaterial({color:0x2e2a3c,roughness:0.65,metalness:0.25}));
     p.position.set(sx*11,3.5,sz*11);
     p.castShadow=true;
     scene.add(p); colliderMeshes.push(p);
@@ -536,7 +551,7 @@ function applyScene(i){
     const w=s[2],h=s[3],d=s[4];
     const hazard=si%4===3;
     const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),
-      new THREE.MeshStandardMaterial({map:hazard?hzTex:techTex,roughness:0.42,metalness:0.62,color:crateTints[ci++%3]}));
+      new THREE.MeshStandardMaterial({map:hazard?hzTex:techTex,roughness:0.5,metalness:0.45,envMapIntensity:0.9,color:crateTints[ci++%3]}));
     m.position.set(s[0],h/2,s[1]);
     m.castShadow=true; m.receiveShadow=true;
     scene.add(m); colliderMeshes.push(m);
@@ -544,7 +559,7 @@ function applyScene(i){
     if(STACKED.has(si)){
       const w2=w*0.68,h2=h*0.55,d2=d*0.68;
       const m2=new THREE.Mesh(new THREE.BoxGeometry(w2,h2,d2),
-        new THREE.MeshStandardMaterial({map:techTex,roughness:0.42,metalness:0.62,color:0xd8ecff}));
+        new THREE.MeshStandardMaterial({map:techTex,roughness:0.5,metalness:0.45,envMapIntensity:0.9,color:0xd8ecff}));
       m2.position.set(s[0],h+h2/2,s[1]); m2.rotation.y=0.12;
       m2.castShadow=true; m2.receiveShadow=true;
       scene.add(m2); colliderMeshes.push(m2);
@@ -826,8 +841,8 @@ function spawnPointFar(){
 function makeBot(idx){
   const color=BOT_COLORS[idx%BOT_COLORS.length];
   const g=new THREE.Group();
-  const mat=new THREE.MeshStandardMaterial({color:color,roughness:0.55,metalness:0.35});
-  const dark=new THREE.MeshStandardMaterial({color:0x151522,roughness:0.7,metalness:0.4});
+  const mat=new THREE.MeshStandardMaterial({color:color,roughness:0.55,metalness:0.35,envMapIntensity:0.7});
+  const dark=new THREE.MeshStandardMaterial({color:0x151522,roughness:0.7,metalness:0.4,envMapIntensity:0.7});
   const glowMat=new THREE.MeshBasicMaterial({color:color});
   const bot={
     idx:idx,name:BOT_NAMES[idx%BOT_NAMES.length],g:g,mat:mat,hpFg:null,hitMeshes:[],
