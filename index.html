@@ -127,7 +127,7 @@
     <div id="topbar"><div id="timer">3:00</div><div id="score">0 击杀</div></div>
     <div id="hpwrap"><div id="hpbar"><div id="hpfill"></div></div><div id="hptext">HP 100</div></div>
     <div id="wpn">
-      <div id="wpnName">冲锋枪</div><div id="ammo">30</div><br/>
+      <div id="wpnName">MP5</div><div id="ammo">30</div><br/>
       <button class="hbtn" id="muteBtn">🔊</button><button class="hbtn" id="autoBtn">🎯</button><button class="hbtn" id="fsBtn">⛶</button><button class="hbtn" id="qBtn">✨</button>
     </div>
     <div id="cross"><span class="l t"></span><span class="l b"></span><span class="l lft"></span><span class="l rgt"></span><span class="l dot"></span></div>
@@ -158,7 +158,7 @@
     <div class="feats">
       🔫 <b id="featMode">5 个敌人 · 普通难度 · 3 分钟</b>死斗<br/>
       🎯 <b>手机自动开火</b>：准星变红自动射击 · 💥 <b>爆头双倍伤害</b><br/>
-      📦 拾取 <b>步枪 / 霰弹枪 / 医疗包</b> · 🏆 连杀播报：双杀、三杀、暴走
+      📦 拾取 <b>AK-47 / Nova / 医疗包</b> · 🏆 连杀播报：双杀、三杀、暴走
     </div>
     <button class="bigbtn" id="startBtn">开始战斗</button>
     <div class="hint" id="ctrlHint"></div>
@@ -203,28 +203,82 @@ function tone(freq,dur,type,vol,slideTo,delay){
   g.gain.setValueAtTime(vol||0.2,t); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
   o.connect(g); g.connect(masterGain); o.start(t); o.stop(t+dur+0.03);
 }
-function noiseShot(kind){
-  if(!AC||muted)return;
-  const dur=kind==='shotgun'?0.28:0.13;
-  const buf=AC.createBuffer(1,Math.floor(AC.sampleRate*dur),AC.sampleRate);
+/* CS 风格枪声：分层合成（枪口脆响+膛压轰鸣+低频冲击+枪机机械声） */
+function nzBurst(t,dur,vol,ftype,ff){
+  const len=Math.max(16,Math.floor(AC.sampleRate*dur));
+  const buf=AC.createBuffer(1,len,AC.sampleRate);
   const d=buf.getChannelData(0);
-  for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,2.2);
-  const src=AC.createBufferSource(); src.buffer=buf;
-  const f=AC.createBiquadFilter(); f.type='lowpass';
-  f.frequency.value=kind==='shotgun'?750:(kind==='rifle'?2100:3300);
-  const g=AC.createGain(); g.gain.value=kind==='enemy'?0.10:0.32;
-  src.connect(f); f.connect(g); g.connect(masterGain); src.start();
-  tone(kind==='shotgun'?85:150,0.09,'square',0.14,55);
+  for(let i=0;i<len;i++){const k=i/len; d[i]=(Math.random()*2-1)*Math.pow(1-k,2.4);}
+  const s=AC.createBufferSource(); s.buffer=buf;
+  const f=AC.createBiquadFilter(); f.type=ftype; f.frequency.value=ff;
+  const g=AC.createGain();
+  g.gain.setValueAtTime(vol,t);
+  g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+  s.connect(f); f.connect(g); g.connect(masterGain);
+  s.start(t); s.stop(t+dur+0.03);
 }
-const sfxShoot=k=>noiseShot(k);
+function thumpSfx(t,f0,dur,vol){
+  const o=AC.createOscillator(),g=AC.createGain();
+  o.type='sine';
+  o.frequency.setValueAtTime(f0,t);
+  o.frequency.exponentialRampToValueAtTime(Math.max(20,f0*0.45),t+dur);
+  g.gain.setValueAtTime(vol,t);
+  g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+  o.connect(g); g.connect(masterGain);
+  o.start(t); o.stop(t+dur+0.03);
+}
+function mechClick(t,vol,f){
+  const o=AC.createOscillator(),g=AC.createGain();
+  o.type='square'; o.frequency.value=f||3000;
+  g.gain.setValueAtTime(vol||0.07,t);
+  g.gain.exponentialRampToValueAtTime(0.001,t+0.03);
+  o.connect(g); g.connect(masterGain);
+  o.start(t); o.stop(t+0.05);
+}
+const GUN_SND={
+  smg:    {crack:2500,body:1300,bodyT:0.13,thump:100,thumpT:0.15,v:0.85}, // MP5：脆
+  rifle:  {crack:1400,body:620, bodyT:0.24,thump:68, thumpT:0.26,v:1.0},  // AK-47：沉
+  shotgun:{crack:800, body:380, bodyT:0.34,thump:52, thumpT:0.36,v:1.1},  // Nova：轰
+  enemy:  {crack:1800,body:1000,bodyT:0.12,thump:90, thumpT:0.14,v:0.35}
+};
+function sfxShoot(k){
+  if(!AC||muted)return;
+  const p=GUN_SND[k]||GUN_SND.enemy;
+  const t=AC.currentTime, v=p.v;
+  nzBurst(t,0.05,0.50*v,'highpass',p.crack);
+  nzBurst(t,p.bodyT,0.42*v,'lowpass',p.body);
+  thumpSfx(t,p.thump,p.thumpT,0.55*v);
+  mechClick(t+0.015,0.06*v,3400);
+}
 const sfxHit=()=>tone(1350,0.06,'square',0.16);
-const sfxHeadshot=()=>{tone(1800,0.06,'square',0.2);tone(2400,0.08,'square',0.14,null,0.04);};
+const sfxHeadshot=()=>{ // CS 式爆头金属"叮"
+  if(!AC||muted)return;
+  const t=AC.currentTime;
+  const o=AC.createOscillator(),g=AC.createGain();
+  o.type='triangle'; o.frequency.value=2350;
+  g.gain.setValueAtTime(0.18,t);
+  g.gain.exponentialRampToValueAtTime(0.001,t+0.14);
+  o.connect(g); g.connect(masterGain); o.start(t); o.stop(t+0.16);
+  const o2=AC.createOscillator(),g2=AC.createGain();
+  o2.type='sine'; o2.frequency.value=3525;
+  g2.gain.setValueAtTime(0.09,t);
+  g2.gain.exponentialRampToValueAtTime(0.001,t+0.10);
+  o2.connect(g2); g2.connect(masterGain); o2.start(t); o2.stop(t+0.12);
+};
 const sfxKill=()=>{tone(520,0.09,'sawtooth',0.22);tone(780,0.12,'sawtooth',0.22,null,0.08);};
 const sfxPickup=()=>{tone(520,0.08,'sine',0.22,880);};
 const sfxOrb=()=>{tone(880,0.1,'sine',0.18,1500);};
 const sfxHurt=()=>tone(105,0.16,'sawtooth',0.3,60);
 const sfxEmpty=()=>tone(2200,0.04,'square',0.1);
-const sfxReload=()=>{tone(700,0.05,'square',0.14);tone(500,0.06,'square',0.14,null,0.12);tone(900,0.05,'square',0.16,null,0.3);};
+const sfxReload=(dur)=>{ // 换弹匣三连音：退匣→上匣→拉枪机
+  if(!AC||muted)return;
+  dur=dur||1.5;
+  const t=AC.currentTime;
+  mechClick(t,0.10,1700);
+  nzBurst(t,0.05,0.14,'bandpass',2500);
+  setTimeout(()=>{if(AC&&!muted){const tt=AC.currentTime;mechClick(tt,0.12,1300);nzBurst(tt,0.06,0.20,'bandpass',1700);}},dur*450);
+  setTimeout(()=>{if(AC&&!muted){const tt=AC.currentTime;nzBurst(tt,0.09,0.24,'highpass',3200);mechClick(tt+0.05,0.10,2300);}},dur*820);
+};
 const sfxDie=()=>tone(220,0.5,'sawtooth',0.28,55);
 
 /* ================= 背景音乐（WebAudio 合成电子乐，无素材） ================= */
@@ -776,9 +830,9 @@ function hasLOS(from,to){
 
 /* ================= 武器配置 ================= */
 const WEAPONS={
-  smg:    {name:'冲锋枪', dmg:12,interval:0.11,mag:30,reload:1.3,spread:0.028,pellets:1,auto:true, kick:0.0035,color:0x00ffcc},
-  rifle:  {name:'突击步枪',dmg:26,interval:0.17,mag:20,reload:1.8,spread:0.011,pellets:1,auto:true, kick:0.006, color:0xffaa00},
-  shotgun:{name:'霰弹枪', dmg:9, interval:0.85,mag:6, reload:2.2,spread:0.075,pellets:8,auto:false,kick:0.02,  color:0xff3355}
+  smg:    {name:'MP5',  dmg:12,interval:0.11,mag:30,reload:1.3,spread:0.028,pellets:1,auto:true, kick:0.0035,color:0x00ffcc,mz:-1.06},
+  rifle:  {name:'AK-47',dmg:26,interval:0.17,mag:20,reload:1.8,spread:0.011,pellets:1,auto:true, kick:0.006, color:0xffaa00,mz:-1.32},
+  shotgun:{name:'Nova', dmg:9, interval:0.85,mag:6, reload:2.2,spread:0.075,pellets:8,auto:false,kick:0.02,  color:0xff3355,mz:-1.12}
 };
 const WEAPON_ORDER=['smg','rifle','shotgun'];
 
@@ -794,24 +848,79 @@ const player={
 function switchWeapon(key){
   if(!player.owned[key]||player.cur===key||player.reloading>0)return;
   player.cur=key; player.fireCd=Math.max(player.fireCd,0.25);
-  $('wpnName').textContent=WEAPONS[key].name;
-  $('wpnName').style.color='#'+WEAPONS[key].color.toString(16).padStart(6,'0');
-  gunGlow.material.color.setHex(WEAPONS[key].color);
+  const w=WEAPONS[key];
+  $('wpnName').textContent=w.name;
+  $('wpnName').style.color='#'+w.color.toString(16).padStart(6,'0');
+  setGunModel(key);
+  muzzle.position.set(0.27,-0.19,w.mz);
+  muzzleLight.position.set(0.27,-0.19,w.mz-0.05);
   updateAmmoHUD();
 }
-/* 持枪视图 */
+/* ================= 持枪视图：每种武器独立建模 ================= */
 const gun=new THREE.Group();
-const gunBody=new THREE.Mesh(new THREE.BoxGeometry(0.09,0.15,0.52),
-  new THREE.MeshLambertMaterial({color:0x1a2230}));
-const gunBarrel=new THREE.Mesh(new THREE.BoxGeometry(0.05,0.05,0.34),
-  new THREE.MeshLambertMaterial({color:0x0a0e18}));
-gunBarrel.position.set(0,0.03,-0.4);
-const gunGlow=new THREE.Mesh(new THREE.BoxGeometry(0.095,0.03,0.3),
-  new THREE.MeshBasicMaterial({color:0x00ffcc}));
-gunGlow.position.set(0,-0.02,-0.1);
-gun.add(gunBody,gunBarrel,gunGlow);
+function buildGunModel(key){
+  // CS 写实风：MP5 / AK-47 / Nova，无霓虹条
+  const g=new THREE.Group();
+  const steel=new THREE.MeshStandardMaterial({color:0x23262c,roughness:0.42,metalness:0.75});
+  const black=new THREE.MeshStandardMaterial({color:0x101216,roughness:0.6,metalness:0.35});
+  const wood=new THREE.MeshStandardMaterial({color:0x6e4526,roughness:0.75,metalness:0.05});
+  const woodD=new THREE.MeshStandardMaterial({color:0x59351d,roughness:0.8,metalness:0.05});
+  function part(geo,mat,x,y,z){
+    const m=new THREE.Mesh(geo,mat);
+    m.position.set(x,y,z); g.add(m); return m;
+  }
+  function tube(r,len,mat,x,y,z){
+    const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,len,12),mat);
+    m.rotation.x=Math.PI/2; m.position.set(x,y,z); g.add(m); return m;
+  }
+  if(key==='smg'){ /* ===== MP5 ===== */
+    part(new THREE.BoxGeometry(0.085,0.13,0.36),steel,0,0,-0.02);
+    tube(0.048,0.20,black,0,0.005,-0.28);
+    tube(0.017,0.14,steel,0,0.01,-0.44);
+    tube(0.024,0.05,black,0,0.01,-0.50);
+    const mg=part(new THREE.BoxGeometry(0.055,0.24,0.095),black,0,-0.165,-0.06); mg.rotation.x=0.06;
+    const gr=part(new THREE.BoxGeometry(0.05,0.10,0.07),black,0,-0.10,0.10); gr.rotation.x=0.25;
+    part(new THREE.BoxGeometry(0.016,0.016,0.20),steel,-0.028,0.02,0.24);
+    part(new THREE.BoxGeometry(0.016,0.016,0.20),steel,0.028,0.02,0.24);
+    part(new THREE.BoxGeometry(0.075,0.11,0.03),black,0,0.01,0.345);
+    part(new THREE.TorusGeometry(0.028,0.008,8,16),steel,0,0.095,-0.40);
+    part(new THREE.BoxGeometry(0.012,0.03,0.012),steel,0,0.075,-0.40);
+    part(new THREE.BoxGeometry(0.02,0.02,0.05),steel,-0.055,0.03,-0.10);
+  }else if(key==='rifle'){ /* ===== AK-47 ===== */
+    part(new THREE.BoxGeometry(0.088,0.135,0.44),steel,0,0,-0.04);
+    part(new THREE.BoxGeometry(0.082,0.095,0.26),wood,0,0.008,-0.36);
+    tube(0.015,0.30,steel,0,0.02,-0.60);
+    tube(0.022,0.05,black,0,0.02,-0.76);
+    part(new THREE.BoxGeometry(0.014,0.045,0.014),steel,0,0.075,-0.70);
+    part(new THREE.BoxGeometry(0.05,0.02,0.06),steel,0,0.085,-0.24);
+    const m1=part(new THREE.BoxGeometry(0.062,0.13,0.10),steel,0,-0.115,0.02); m1.rotation.x=0.12;
+    const m2=part(new THREE.BoxGeometry(0.062,0.13,0.10),steel,0,-0.20,-0.045); m2.rotation.x=0.42;
+    const m3=part(new THREE.BoxGeometry(0.062,0.11,0.10),steel,0,-0.265,-0.13); m3.rotation.x=0.72;
+    const gr=part(new THREE.BoxGeometry(0.05,0.11,0.065),woodD,0,-0.10,0.13); gr.rotation.x=0.3;
+    const st=part(new THREE.BoxGeometry(0.075,0.12,0.26),wood,0,-0.015,0.35); st.rotation.x=-0.06;
+    part(new THREE.BoxGeometry(0.02,0.025,0.09),steel,0.056,0.03,-0.06);
+  }else{ /* ===== Nova 霰弹枪 ===== */
+    part(new THREE.BoxGeometry(0.095,0.145,0.40),steel,0,0,-0.04);
+    tube(0.028,0.34,steel,0,0.035,-0.40);
+    tube(0.021,0.28,black,0,-0.045,-0.38);
+    part(new THREE.BoxGeometry(0.085,0.075,0.17),black,0,-0.045,-0.38);
+    const gr=part(new THREE.BoxGeometry(0.05,0.11,0.065),black,0,-0.105,0.10); gr.rotation.x=0.28;
+    const st=part(new THREE.BoxGeometry(0.08,0.12,0.24),black,0,-0.02,0.30); st.rotation.x=-0.05;
+    part(new THREE.BoxGeometry(0.055,0.018,0.05),steel,0,0.085,-0.14);
+    part(new THREE.BoxGeometry(0.012,0.025,0.012),steel,0,0.075,-0.55);
+    part(new THREE.BoxGeometry(0.025,0.02,0.06),steel,-0.06,0.0,-0.12);
+  }
+  return g;
+}
+const gunModels={};
+for(const k of WEAPON_ORDER)gunModels[k]=buildGunModel(k);
+function setGunModel(key){
+  gun.clear();
+  gun.add(gunModels[key]);
+}
 gun.position.set(0.27,-0.25,-0.55);
 camera.add(gun);
+setGunModel('smg');
 const muzzle=new THREE.Mesh(new THREE.PlaneGeometry(0.34,0.34),
   new THREE.MeshBasicMaterial({color:0xffdd66,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false}));
 muzzle.position.set(0.27,-0.19,-1.15);
@@ -1386,8 +1495,8 @@ const PICKUP_SPOTS=[
   {x:-14,z:14,type:'health'},{x:14,z:14,type:'health'},{x:0,z:0,type:'rifle'}
 ];
 const PICKUP_STYLE={
-  rifle:{color:0xffaa00,label:'突击步枪'},
-  shotgun:{color:0xff3355,label:'霰弹枪'},
+  rifle:{color:0xffaa00,label:'AK-47'},
+  shotgun:{color:0xff3355,label:'Nova'},
   health:{color:0x33ff66,label:'医疗包+40'}
 };
 function makePickup(spot){
@@ -1502,7 +1611,7 @@ function startReload(){
   if(player.reloading>0||!player.alive||player.ammo[player.cur]>=w.mag)return;
   player.reloading=w.reload;
   $('reloadTip').style.display='block';
-  sfxReload(); updateAmmoHUD();
+  sfxReload(w.reload); updateAmmoHUD();
 }
 /* ================= 游戏流程 ================= */
 let state='menu';
@@ -1522,8 +1631,10 @@ function resetGame(){
   applyScene(gameCfg.sceneIdx);
   applyQuality(gameCfg.qIdx);
   gun.visible=true;
-  $('wpnName').textContent='冲锋枪'; $('wpnName').style.color='#00ffcc';
-  gunGlow.material.color.setHex(0x00ffcc);
+  $('wpnName').textContent='MP5'; $('wpnName').style.color='#00ffcc';
+  setGunModel('smg');
+  muzzle.position.set(0.27,-0.19,WEAPONS.smg.mz);
+  muzzleLight.position.set(0.27,-0.19,WEAPONS.smg.mz-0.05);
   $('score').textContent='0 击杀';
   $('killfeed').innerHTML=''; $('reloadTip').style.display='none';
   $('lowhp').classList.remove('on'); $('flash').style.opacity=0;
