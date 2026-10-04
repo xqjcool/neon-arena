@@ -359,14 +359,21 @@ function makeCrateTexture(hazard){
   const c=document.createElement('canvas'); c.width=c.height=256;
   const g=c.getContext('2d');
   const edge=hazard?'255,150,40':'0,255,230';
-  g.fillStyle=hazard?'#54402a':'#3d4456'; g.fillRect(0,0,256,256);
-  for(let i=0;i<500;i++){ // 金属拉丝噪点
-    g.fillStyle='rgba(255,255,255,'+(Math.random()*0.04)+')';
-    g.fillRect(Math.random()*256,Math.random()*256,2,1);
+  g.fillStyle=hazard?'#4a3a28':'#39404e'; g.fillRect(0,0,256,256); // 做旧金属底漆
+  for(let i=0;i<380;i++){ // 纵向拉丝
+    const x=Math.random()*256;
+    g.fillStyle=Math.random()<0.5?'rgba(0,0,0,'+(Math.random()*0.10)+')':'rgba(255,255,255,'+(Math.random()*0.06)+')';
+    g.fillRect(x,Math.random()*256,rand(1,2),rand(8,42));
   }
-  g.strokeStyle='rgba('+edge+',0.65)'; g.lineWidth=6; g.strokeRect(8,8,240,240);
-  g.strokeStyle='rgba('+edge+',0.25)'; g.lineWidth=2; g.strokeRect(24,24,208,208);
-  if(hazard){ // 警示条纹带
+  for(let i=0;i<12;i++){ // 大块明暗
+    const x=Math.random()*256,y=Math.random()*256,r=rand(20,70);
+    const v=Math.random()<0.5?'0,0,0':'255,255,255';
+    const gr=g.createRadialGradient(x,y,0,x,y,r);
+    gr.addColorStop(0,'rgba('+v+','+(Math.random()*0.08)+')');
+    gr.addColorStop(1,'rgba('+v+',0)');
+    g.fillStyle=gr; g.beginPath(); g.arc(x,y,r,0,7); g.fill();
+  }
+  if(hazard){ // 警示条纹（做旧）
     g.save(); g.beginPath(); g.rect(24,104,208,48); g.clip();
     for(let x=-48;x<280;x+=32){
       g.fillStyle=((x/32)|0)%2?'rgba(255,150,40,0.85)':'rgba(20,12,6,0.9)';
@@ -374,19 +381,55 @@ function makeCrateTexture(hazard){
       g.lineTo(x+40,104); g.lineTo(x+16,152); g.fill();
     }
     g.restore();
+    g.strokeStyle='rgba(0,0,0,0.5)'; g.lineWidth=2; g.strokeRect(24,104,208,48);
   }else{ // 拼接缝
-    g.strokeStyle='rgba(0,255,230,0.18)'; g.lineWidth=2;
+    g.strokeStyle='rgba(0,0,0,0.45)'; g.lineWidth=3;
     g.beginPath(); g.moveTo(24,128); g.lineTo(232,128); g.stroke();
     g.beginPath(); g.moveTo(128,24); g.lineTo(128,232); g.stroke();
+    g.strokeStyle='rgba(255,255,255,0.10)'; g.lineWidth=1;
+    g.beginPath(); g.moveTo(24,131); g.lineTo(232,131); g.stroke();
+    g.beginPath(); g.moveTo(131,24); g.lineTo(131,232); g.stroke();
   }
-  for(const rp of[[20,20],[236,20],[20,236],[236,236]]){ // 铆钉
-    g.fillStyle='#3a4a5c'; g.beginPath(); g.arc(rp[0],rp[1],7,0,7); g.fill();
-    g.fillStyle='rgba(255,255,255,0.35)';
+  g.save(); // 喷漆编号
+  g.translate(128,64); g.rotate(-0.04);
+  g.font='bold 30px monospace'; g.textAlign='center';
+  g.fillStyle=hazard?'rgba(20,12,6,0.75)':'rgba(230,240,255,0.55)';
+  g.fillText(hazard?'DANGER':'NA-'+randi(10,99),0,0);
+  g.font='bold 15px monospace';
+  g.fillStyle=hazard?'rgba(20,12,6,0.6)':'rgba(230,240,255,0.35)';
+  g.fillText('NEON ARENA',0,24);
+  g.restore();
+  for(const rp of[[20,20],[236,20],[20,236],[236,236]]){ // 铆钉（含投影）
+    g.fillStyle='rgba(0,0,0,0.45)';
+    g.beginPath(); g.arc(rp[0]+2,rp[1]+3,7,0,7); g.fill();
+    g.fillStyle='#2c313c'; g.beginPath(); g.arc(rp[0],rp[1],7,0,7); g.fill();
+    g.fillStyle='rgba(255,255,255,0.30)';
     g.beginPath(); g.arc(rp[0]-2,rp[1]-2,2.5,0,7); g.fill();
   }
+  for(let i=0;i<46;i++){ // 边缘磨损划痕
+    const e2=randi(0,3);
+    let x,y;
+    if(e2===0){x=rand(6,250);y=rand(4,12);}
+    else if(e2===1){x=rand(6,250);y=rand(244,252);}
+    else if(e2===2){x=rand(4,12);y=rand(6,250);}
+    else{x=rand(244,252);y=rand(6,250);}
+    g.strokeStyle='rgba(210,220,235,'+rand(0.15,0.45)+')';
+    g.lineWidth=rand(0.8,1.6);
+    g.beginPath(); g.moveTo(x,y); g.lineTo(x+rand(-14,14),y+rand(-14,14)); g.stroke();
+  }
+  const dg=g.createLinearGradient(0,180,0,256); // 底部污渍
+  dg.addColorStop(0,'rgba(0,0,0,0)'); dg.addColorStop(1,'rgba(0,0,0,0.35)');
+  g.fillStyle=dg; g.fillRect(0,180,256,76);
+  for(let i=0;i<(hazard?14:7);i++){ // 锈斑
+    g.fillStyle='rgba(140,80,30,'+rand(0.15,0.4)+')';
+    g.beginPath(); g.arc(Math.random()*256,rand(180,256),rand(3,10),0,7); g.fill();
+  }
+  g.strokeStyle='rgba('+edge+',0.65)'; g.lineWidth=6; g.strokeRect(8,8,240,240); // 发光描边
+  g.strokeStyle='rgba('+edge+',0.25)'; g.lineWidth=2; g.strokeRect(24,24,208,208);
   const t=new THREE.CanvasTexture(c);
   t.colorSpace=THREE.SRGBColorSpace;
-  return t;
+  const n=canvasToNormal(c,2.0);
+  return {map:t,nrm:n};
 }
 /* ================= 场景（白天/黎明/傍晚/夜晚） ================= */
 const SCENES=[
@@ -493,7 +536,7 @@ function applyScene(i){
   gameCfg.sceneIdx=i;
   const s=SCENES[i];
   if(!skyCache[i])skyCache[i]=makeSkyTexture(s);
-  if(skyMesh){skyMesh.material.map=skyCache[i]; skyMesh.material.needsUpdate=true;}
+  if(skyMesh){skyMesh.material.map=skyCache[i];skyMesh.material.needsUpdate=true;}
   scene.fog.color.setHex(s.fog); scene.fog.near=s.fogN; scene.fog.far=s.fogF;
   dl.color.setHex(s.sunC); dl.intensity=s.sunI;
   dl.position.set(s.sunPos[0],s.sunPos[1],s.sunPos[2]);
@@ -527,11 +570,20 @@ function applyScene(i){
   }
   // 中央发光柱
   const pilMat=new THREE.MeshBasicMaterial({color:0xff00ff});
+  const pilMap=cg.map.clone(); pilMap.repeat.set(3,2); pilMap.needsUpdate=true;
+  const pilNrm=cg.nrm.clone(); pilNrm.repeat.set(3,2); pilNrm.needsUpdate=true;
+  const pilMat2=new THREE.MeshStandardMaterial({map:pilMap,normalMap:pilNrm,roughness:0.85,metalness:0.05,envMapIntensity:0.5,color:0xbfc3cc});
+  const bandMat=new THREE.MeshStandardMaterial({color:0x2a2e36,roughness:0.45,metalness:0.75,envMapIntensity:0.8});
   for(const sx of[-1,1])for(const sz of[-1,1]){
-    const p=new THREE.Mesh(new THREE.CylinderGeometry(0.7,0.9,7,10),new THREE.MeshStandardMaterial({color:0x2e2a3c,roughness:0.65,metalness:0.25}));
+    const p=new THREE.Mesh(new THREE.CylinderGeometry(0.7,0.9,7,10),pilMat2);
     p.position.set(sx*11,3.5,sz*11);
-    p.castShadow=true;
+    p.castShadow=true; p.receiveShadow=true;
     scene.add(p); colliderMeshes.push(p);
+    for(const by of[1.6,5.2]){
+      const band=new THREE.Mesh(new THREE.TorusGeometry(0.8,0.07,8,28),bandMat);
+      band.rotation.x=Math.PI/2; band.position.set(sx*11,by,sz*11);
+      band.castShadow=true; scene.add(band);
+    }
     obstacles.push({min:new THREE.Vector3(sx*11-0.9,0,sz*11-0.9),max:new THREE.Vector3(sx*11+0.9,7,sz*11+0.9)});
     const ring=new THREE.Mesh(new THREE.TorusGeometry(0.95,0.07,8,24),pilMat);
     ring.rotation.x=Math.PI/2; ring.position.set(sx*11,0.4,sz*11); scene.add(ring);
@@ -551,7 +603,7 @@ function applyScene(i){
     const w=s[2],h=s[3],d=s[4];
     const hazard=si%4===3;
     const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),
-      new THREE.MeshStandardMaterial({map:hazard?hzTex:techTex,roughness:0.5,metalness:0.45,envMapIntensity:0.9,color:crateTints[ci++%3]}));
+      new THREE.MeshStandardMaterial({map:hazard?hzTex.map:techTex.map,normalMap:hazard?hzTex.nrm:techTex.nrm,roughness:0.5,metalness:0.45,envMapIntensity:0.9,color:crateTints[ci++%3]}));
     m.position.set(s[0],h/2,s[1]);
     m.castShadow=true; m.receiveShadow=true;
     scene.add(m); colliderMeshes.push(m);
@@ -559,7 +611,7 @@ function applyScene(i){
     if(STACKED.has(si)){
       const w2=w*0.68,h2=h*0.55,d2=d*0.68;
       const m2=new THREE.Mesh(new THREE.BoxGeometry(w2,h2,d2),
-        new THREE.MeshStandardMaterial({map:techTex,roughness:0.5,metalness:0.45,envMapIntensity:0.9,color:0xd8ecff}));
+        new THREE.MeshStandardMaterial({map:techTex.map,normalMap:techTex.nrm,roughness:0.5,metalness:0.45,envMapIntensity:0.9,color:0xd8ecff}));
       m2.position.set(s[0],h+h2/2,s[1]); m2.rotation.y=0.12;
       m2.castShadow=true; m2.receiveShadow=true;
       scene.add(m2); colliderMeshes.push(m2);
