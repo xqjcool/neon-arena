@@ -231,6 +231,10 @@ const renderer=new THREE.WebGLRenderer({canvas:canvas,antialias:true,powerPrefer
 renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
 renderer.setSize(window.innerWidth,window.innerHeight);
 renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.2;
 const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x04040c);
 scene.fog=new THREE.Fog(0x04040c,35,100);
@@ -238,7 +242,14 @@ const camera=new THREE.PerspectiveCamera(75,window.innerWidth/window.innerHeight
 camera.rotation.order='YXZ';
 scene.add(camera);
 scene.add(new THREE.HemisphereLight(0x99aaff,0x0a0a14,1.0));
-const dl=new THREE.DirectionalLight(0xffffff,0.65); dl.position.set(24,42,12); scene.add(dl);
+const dl=new THREE.DirectionalLight(0xffffff,0.7); dl.position.set(24,42,12);
+dl.castShadow=true;
+dl.shadow.mapSize.set(2048,2048);
+dl.shadow.camera.left=-46; dl.shadow.camera.right=46;
+dl.shadow.camera.top=46; dl.shadow.camera.bottom=-46;
+dl.shadow.camera.near=5; dl.shadow.camera.far=130;
+dl.shadow.bias=-0.0003; dl.shadow.normalBias=0.05;
+scene.add(dl);
 const pl1=new THREE.PointLight(0x00ffff,60,70); pl1.position.set(-22,9,-22); scene.add(pl1);
 const pl2=new THREE.PointLight(0xff00ff,60,70); pl2.position.set(22,9,22); scene.add(pl2);
 
@@ -247,6 +258,33 @@ const ARENA=34;
 const obstacles=[];   // {min:Vector3,max:Vector3}
 const colliderMeshes=[];
 const pulseMats=[];   // 需要呼吸脉冲的发光材质
+/* 从高度图(canvas明暗)生成法线贴图，制造凹凸感 */
+function canvasToNormal(canvas,strength){
+  const w=canvas.width,h=canvas.height;
+  const src=canvas.getContext('2d').getImageData(0,0,w,h).data;
+  const out=document.createElement('canvas'); out.width=w; out.height=h;
+  const g=out.getContext('2d');
+  const img=g.createImageData(w,h);
+  const hv=(x,y)=>{
+    x=(x+w)%w; y=(y+h)%h;
+    const i=(y*w+x)*4;
+    return (src[i]*0.35+src[i+1]*0.5+src[i+2]*0.15)/255;
+  };
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+    const dx=(hv(x-1,y)-hv(x+1,y))*strength;
+    const dy=(hv(x,y-1)-hv(x,y+1))*strength;
+    const inv=1/Math.sqrt(dx*dx+dy*dy+1);
+    const i=(y*w+x)*4;
+    img.data[i]=(-dx*inv*0.5+0.5)*255;
+    img.data[i+1]=(dy*inv*0.5+0.5)*255;
+    img.data[i+2]=(inv*0.5+0.5)*255;
+    img.data[i+3]=255;
+  }
+  g.putImageData(img,0,0);
+  const t=new THREE.CanvasTexture(out);
+  t.wrapS=t.wrapT=THREE.RepeatWrapping;
+  return t;
+}
 function makeConcreteTexture(){
   const c=document.createElement('canvas'); c.width=c.height=512;
   const g=c.getContext('2d');
@@ -282,7 +320,9 @@ function makeConcreteTexture(){
   }
   const t=new THREE.CanvasTexture(c);
   t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(9,9);
-  return t;
+  t.colorSpace=THREE.SRGBColorSpace;
+  const n=canvasToNormal(c,2.2); n.repeat.set(9,9);
+  return {map:t,nrm:n};
 }
 function makeBrickTexture(){
   const c=document.createElement('canvas'); c.width=c.height=512;
@@ -308,7 +348,9 @@ function makeBrickTexture(){
   }
   const t=new THREE.CanvasTexture(c);
   t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(15,1.6);
-  return t;
+  t.colorSpace=THREE.SRGBColorSpace;
+  const n=canvasToNormal(c,2.6); n.repeat.set(15,1.6);
+  return {map:t,nrm:n};
 }
 function makeCrateTexture(hazard){
   const c=document.createElement('canvas'); c.width=c.height=256;
@@ -339,15 +381,65 @@ function makeCrateTexture(hazard){
     g.fillStyle='rgba(255,255,255,0.35)';
     g.beginPath(); g.arc(rp[0]-2,rp[1]-2,2.5,0,7); g.fill();
   }
-  return new THREE.CanvasTexture(c);
+  const t=new THREE.CanvasTexture(c);
+  t.colorSpace=THREE.SRGBColorSpace;
+  return t;
+}
+function makeSkyTexture(){
+  const c=document.createElement('canvas'); c.width=2048; c.height=1024;
+  const g=c.getContext('2d');
+  const gr=g.createLinearGradient(0,0,0,1024);
+  gr.addColorStop(0,'#020208');
+  gr.addColorStop(0.35,'#0a0a24');
+  gr.addColorStop(0.5,'#2a1e44');
+  gr.addColorStop(0.58,'#0c0c18');
+  gr.addColorStop(1,'#030308');
+  g.fillStyle=gr; g.fillRect(0,0,2048,1024);
+  for(const n of[[500,200,320,'120,60,200'],[1400,280,380,'40,120,200'],[1000,140,260,'200,60,160']]){
+    const ng=g.createRadialGradient(n[0],n[1],0,n[0],n[1],n[2]);
+    ng.addColorStop(0,'rgba('+n[3]+',0.10)'); ng.addColorStop(1,'rgba('+n[3]+',0)');
+    g.fillStyle=ng; g.beginPath(); g.arc(n[0],n[1],n[2],0,7); g.fill();
+  }
+  for(let i=0;i<520;i++){ // 星星
+    const x=Math.random()*2048,y=Math.random()*430;
+    g.fillStyle='rgba(255,255,255,'+rand(0.25,1)+')';
+    g.beginPath(); g.arc(x,y,rand(0.6,1.8),0,7); g.fill();
+  }
+  const mx=1560,my=175; // 月亮
+  const mg=g.createRadialGradient(mx,my,10,mx,my,130);
+  mg.addColorStop(0,'rgba(220,230,255,0.5)'); mg.addColorStop(1,'rgba(220,230,255,0)');
+  g.fillStyle=mg; g.beginPath(); g.arc(mx,my,130,0,7); g.fill();
+  g.fillStyle='#dfe6ff'; g.beginPath(); g.arc(mx,my,44,0,7); g.fill();
+  g.fillStyle='rgba(160,170,200,0.5)';
+  for(let i=0;i<7;i++){g.beginPath();g.arc(mx+rand(-24,24),my+rand(-24,24),rand(4,10),0,7);g.fill();}
+  let x=0; // 远景城市剪影（地平线 y=540）
+  while(x<2048){
+    const bw=rand(60,170),bh=rand(90,260);
+    g.fillStyle='#05050c';
+    g.fillRect(x,540-bh,bw,bh+30);
+    for(let wy=540-bh+14;wy<528;wy+=22){
+      for(let wx=x+8;wx<x+bw-8;wx+=16){
+        if(Math.random()<0.28){
+          g.fillStyle=Math.random()<0.75?'rgba(255,210,120,'+rand(0.35,0.9)+')':'rgba(120,230,255,'+rand(0.3,0.8)+')';
+          g.fillRect(wx,wy,7,10);
+        }
+      }
+    }
+    x+=bw+rand(4,26);
+  }
+  const t=new THREE.CanvasTexture(c);
+  t.colorSpace=THREE.SRGBColorSpace;
+  return t;
 }
 (function buildArena(){
+  const cg=makeConcreteTexture();
   const floor=new THREE.Mesh(
     new THREE.PlaneGeometry(ARENA*2,ARENA*2),
-    new THREE.MeshLambertMaterial({map:makeConcreteTexture()})
+    new THREE.MeshStandardMaterial({map:cg.map,normalMap:cg.nrm,roughness:0.94,metalness:0.04})
   );
-  floor.rotation.x=-Math.PI/2; scene.add(floor);
-  const wallMat=new THREE.MeshLambertMaterial({map:makeBrickTexture()});
+  floor.rotation.x=-Math.PI/2; floor.receiveShadow=true; scene.add(floor);
+  const bw=makeBrickTexture();
+  const wallMat=new THREE.MeshStandardMaterial({map:bw.map,normalMap:bw.nrm,roughness:0.9,metalness:0.03});
   const edgeMat=new THREE.MeshBasicMaterial({color:0x00ffff});
   const H=5;
   const walls=[
@@ -356,15 +448,19 @@ function makeCrateTexture(hazard){
   ];
   for(const wl of walls){
     const m=new THREE.Mesh(new THREE.BoxGeometry(wl.w,H,wl.d),wallMat);
-    m.position.set(wl.x,H/2,wl.z); scene.add(m); colliderMeshes.push(m);
+    m.position.set(wl.x,H/2,wl.z);
+    m.castShadow=true; m.receiveShadow=true;
+    scene.add(m); colliderMeshes.push(m);
     const e=new THREE.Mesh(new THREE.BoxGeometry(wl.w===1?1.2:wl.w,0.14,wl.d===1?1.2:wl.d),edgeMat);
     e.position.set(wl.x,H+0.05,wl.z); scene.add(e);
   }
   // 中央发光柱
   const pilMat=new THREE.MeshBasicMaterial({color:0xff00ff});
   for(const sx of[-1,1])for(const sz of[-1,1]){
-    const p=new THREE.Mesh(new THREE.CylinderGeometry(0.7,0.9,7,10),new THREE.MeshLambertMaterial({color:0x140a20}));
-    p.position.set(sx*11,3.5,sz*11); scene.add(p); colliderMeshes.push(p);
+    const p=new THREE.Mesh(new THREE.CylinderGeometry(0.7,0.9,7,10),new THREE.MeshStandardMaterial({color:0x140a20,roughness:0.65,metalness:0.35}));
+    p.position.set(sx*11,3.5,sz*11);
+    p.castShadow=true;
+    scene.add(p); colliderMeshes.push(p);
     obstacles.push({min:new THREE.Vector3(sx*11-0.9,0,sz*11-0.9),max:new THREE.Vector3(sx*11+0.9,7,sz*11+0.9)});
     const ring=new THREE.Mesh(new THREE.TorusGeometry(0.95,0.07,8,24),pilMat);
     ring.rotation.x=Math.PI/2; ring.position.set(sx*11,0.4,sz*11); scene.add(ring);
@@ -384,14 +480,17 @@ function makeCrateTexture(hazard){
     const w=s[2],h=s[3],d=s[4];
     const hazard=si%4===3;
     const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),
-      new THREE.MeshLambertMaterial({map:hazard?hzTex:techTex,color:crateTints[ci++%3]}));
-    m.position.set(s[0],h/2,s[1]); scene.add(m); colliderMeshes.push(m);
+      new THREE.MeshStandardMaterial({map:hazard?hzTex:techTex,roughness:0.42,metalness:0.62,color:crateTints[ci++%3]}));
+    m.position.set(s[0],h/2,s[1]);
+    m.castShadow=true; m.receiveShadow=true;
+    scene.add(m); colliderMeshes.push(m);
     let topH=h;
     if(STACKED.has(si)){
       const w2=w*0.68,h2=h*0.55,d2=d*0.68;
       const m2=new THREE.Mesh(new THREE.BoxGeometry(w2,h2,d2),
-        new THREE.MeshLambertMaterial({map:techTex,color:0xd8ecff}));
+        new THREE.MeshStandardMaterial({map:techTex,roughness:0.42,metalness:0.62,color:0xd8ecff}));
       m2.position.set(s[0],h+h2/2,s[1]); m2.rotation.y=0.12;
+      m2.castShadow=true; m2.receiveShadow=true;
       scene.add(m2); colliderMeshes.push(m2);
       topH=h+h2;
     }
@@ -423,6 +522,13 @@ function makeCrateTexture(hazard){
     strip.position.set(sx*11+dx/l*0.95,3.3,sz*11+dz/l*0.95);
     scene.add(strip);
   }
+})();
+(function buildSky(){ // 夜空 + 远景城市
+  const sky=new THREE.Mesh(
+    new THREE.SphereGeometry(210,32,16),
+    new THREE.MeshBasicMaterial({map:makeSkyTexture(),side:THREE.BackSide,fog:false})
+  );
+  scene.add(sky);
 })();
 // 圆形 vs AABB 碰撞推挤
 const _tmpC=new THREE.Vector3();
@@ -491,6 +597,12 @@ const muzzle=new THREE.Mesh(new THREE.PlaneGeometry(0.34,0.34),
 muzzle.position.set(0.27,-0.19,-1.15);
 camera.add(muzzle);
 let muzzleT=0,gunKick=0;
+/* 动态光源：枪口闪光 / 击杀爆炸 */
+const muzzleLight=new THREE.PointLight(0xffcc66,0,20,1.6);
+muzzleLight.position.set(0.27,-0.19,-1.2);
+camera.add(muzzleLight);
+const boomLight=new THREE.PointLight(0xff8033,0,26,1.7);
+scene.add(boomLight);
 
 /* ================= 输入 ================= */
 const keys={};
@@ -641,8 +753,8 @@ function spawnPointFar(){
 function makeBot(idx){
   const color=BOT_COLORS[idx%BOT_COLORS.length];
   const g=new THREE.Group();
-  const mat=new THREE.MeshLambertMaterial({color:color});
-  const dark=new THREE.MeshLambertMaterial({color:0x151522});
+  const mat=new THREE.MeshStandardMaterial({color:color,roughness:0.55,metalness:0.35});
+  const dark=new THREE.MeshStandardMaterial({color:0x151522,roughness:0.7,metalness:0.4});
   const glowMat=new THREE.MeshBasicMaterial({color:color});
   const bot={
     idx:idx,name:BOT_NAMES[idx%BOT_NAMES.length],g:g,mat:mat,hpFg:null,hitMeshes:[],
@@ -653,6 +765,7 @@ function makeBot(idx){
   };
   function tag(m,partName){
     m.userData.bot=bot; m.userData.part=partName;
+    m.castShadow=true;
     bot.hitMeshes.push(m); botMeshes.push(m); return m;
   }
   // 四肢：pivot 在关节处，靠旋转做走路动画
@@ -688,7 +801,7 @@ function makeBot(idx){
   }
   // 脖子 + 头
   const neck=new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.07,0.14,8),dark);
-  neck.position.y=1.62; g.add(neck);
+  neck.position.y=1.62; neck.castShadow=true; g.add(neck);
   const head=new THREE.Mesh(new THREE.SphereGeometry(0.21,14,12),mat);
   head.position.y=1.86; g.add(head); tag(head,'head');
   // 发光面甲
@@ -926,6 +1039,7 @@ function tryFire(){
   player.bloom=Math.min(22,player.bloom+5);
   gunKick=0.09; muzzleT=0.05;
   muzzle.material.opacity=0.95;
+  muzzleLight.intensity=30;
   sfxShoot(player.cur);
   camera.getWorldDirection(_dir);
   _origin.copy(camera.position);
@@ -986,6 +1100,7 @@ function killBot(bot,headshot){
   addScore(bonus);
   feedKill('你',bot.name,true);
   sfxKill();
+  boomLight.position.set(bot.pos.x,1.5,bot.pos.z); boomLight.intensity=55;
   _v1.set(bot.pos.x,1.2,bot.pos.z);
   spawnBurst(_v1,0xffd23f,22,7,0.7);
   spawnBurst(_v1,0xff3355,14,5,0.5);
@@ -1032,8 +1147,8 @@ function makePickup(spot){
   const st=PICKUP_STYLE[spot.type];
   const g=new THREE.Group();
   const box=new THREE.Mesh(new THREE.BoxGeometry(0.55,0.55,0.55),
-    new THREE.MeshLambertMaterial({color:0x101020,emissive:st.color,emissiveIntensity:0.55}));
-  box.position.y=1.0; g.add(box);
+    new THREE.MeshStandardMaterial({color:0x101020,emissive:st.color,emissiveIntensity:0.55,roughness:0.4,metalness:0.3}));
+  box.position.y=1.0; box.castShadow=true; g.add(box);
   const ring=new THREE.Mesh(new THREE.TorusGeometry(0.62,0.05,8,26),
     new THREE.MeshBasicMaterial({color:st.color}));
   ring.rotation.x=Math.PI/2; ring.position.y=0.25; g.add(ring);
@@ -1316,6 +1431,8 @@ function loop(t){
   updateParticles(dt);
   updateTracers(dt);
   updateDmgNums(dt);
+  muzzleLight.intensity=Math.max(0,muzzleLight.intensity-dt*320);
+  boomLight.intensity=Math.max(0,boomLight.intensity-dt*90);
   const pt=performance.now()*0.0022; // 中央竞技环呼吸脉冲
   for(const pm of pulseMats)pm.opacity=0.5+0.28*Math.sin(pt);
   renderer.render(scene,camera);
