@@ -206,6 +206,7 @@
   <div id="menu" class="screen">
     <div class="title">霓虹竞技场</div>
     <div class="subtitle">NEON ARENA</div>
+    <div class="optRow" id="rowMap"></div>
     <div class="optRow" id="rowEnemies"></div>
     <div class="optRow" id="rowDiff"></div>
     <div class="optRow" id="rowLen"></div>
@@ -451,7 +452,7 @@ const pl2=new THREE.PointLight(0xff00ff,60,70); pl2.position.set(22,9,22); scene
 const lampLights=[]; // 场地照明灯（buildArena 里创建）
 
 /* ================= 竞技场 ================= */
-const ARENA=34;
+let MAP_SIZE=34; // 当前地图半宽（buildMap 设置）
 const obstacles=[];   // {min:Vector3,max:Vector3}
 const colliderMeshes=[];
 const pulseMats=[];   // 需要呼吸脉冲的发光材质
@@ -739,68 +740,137 @@ function applyScene(i){
   for(const l of lampLights)l.intensity=90*s.lamp;
   updateEnv(i);
 }
-(function buildArena(){
-  const cg=makeConcreteTexture();
+/* ================= 地图数据 ================= */
+const MAPS=[
+  { name:'标准竞技场', size:34, rings:true,
+    pillars:[[-11,-11],[11,-11],[-11,11],[11,11]],
+    crates:[
+      [-20,-6,3.4,2.6,2.6],[20,6,3.4,2.6,2.6],[-20,8,2.6,3.2,2.2],[20,-8,2.6,3.2,2.2],
+      [-7,-20,4.2,2.4,2.4],[7,20,4.2,2.4,2.4],[-7,20,2.4,2.4,3.0],[7,-20,2.4,2.4,3.0],
+      [0,-13,5.0,2.2,2.2],[0,13,5.0,2.2,2.2],[-26,20,3.0,2.4,2.4],[26,-20,3.0,2.4,2.4]
+    ],
+    stacked:[0,4,9],
+    poles:[[-27,-27],[27,-27],[-27,27],[27,27]],
+    pickups:[
+      {x:-14,z:-14,type:'rifle'},{x:14,z:-14,type:'shotgun'},
+      {x:-14,z:14,type:'health'},{x:14,z:14,type:'health'},{x:0,z:0,type:'rifle'},
+      {x:0,z:-19,type:'awp'},{x:-19,z:0,type:'armor'},{x:19,z:0,type:'armor'},
+      {x:19,z:-19,type:'deagle'}
+    ]},
+  { name:'仓库', size:30, rings:false,
+    pillars:[[-20,-20],[20,20]],
+    crates:[
+      [-14,-14,4,2.6,4],[0,-14,4,2.6,4],[14,-14,4,2.6,4],
+      [-14,0,4,3,4],[14,0,4,3,4],
+      [-14,14,4,2.6,4],[0,14,4,2.6,4],[14,14,4,2.6,4],
+      [-7,-7,2.6,2.2,2.6],[7,7,2.6,2.2,2.6],[-7,7,2.6,2.2,2.6],[7,-7,2.6,2.2,2.6]
+    ],
+    stacked:[4],
+    poles:[[-24,-24],[24,-24],[-24,24],[24,24]],
+    pickups:[
+      {x:0,z:0,type:'shotgun'},{x:-7,z:0,type:'rifle'},{x:7,z:0,type:'deagle'},
+      {x:-21,z:-21,type:'armor'},{x:21,z:21,type:'armor'},
+      {x:-21,z:21,type:'health'},{x:21,z:-21,type:'health'},{x:0,z:-21,type:'awp'}
+    ]},
+  { name:'广场', size:36, rings:true,
+    pillars:[[-16,-16],[16,-16],[-16,16],[16,16]],
+    crates:[
+      [-8,0,3,1.6,3],[8,0,3,1.6,3],[0,-8,3,1.6,3],[0,8,3,1.6,3],
+      [-24,0,4,2.2,4],[24,0,4,2.2,4]
+    ],
+    stacked:[],
+    poles:[[-30,-30],[30,-30],[-30,30],[30,30]],
+    pickups:[
+      {x:0,z:-16,type:'awp'},{x:0,z:16,type:'awp'},
+      {x:-24,z:-24,type:'rifle'},{x:24,z:24,type:'rifle'},
+      {x:-24,z:24,type:'armor'},{x:24,z:-24,type:'armor'},
+      {x:0,z:0,type:'deagle'},{x:-16,z:0,type:'health'},{x:16,z:0,type:'health'}
+    ]}
+];
+let mapGroup=null,currentMapIdx=-1;
+const TEXCACHE={};
+function arenaTex(kind,hazard){ // 地图纹理缓存，避免切换地图重复生成
+  const k=kind+(hazard?'H':'');
+  if(!TEXCACHE[k])TEXCACHE[k]=kind==='concrete'?makeConcreteTexture():kind==='brick'?makeBrickTexture():makeCrateTexture(!!hazard);
+  return TEXCACHE[k];
+}
+function disposeMapGroup(){
+  if(!mapGroup)return;
+  mapGroup.traverse(o=>{
+    if(o.isMesh){o.geometry.dispose();const mt=o.material;if(mt)(Array.isArray(mt)?mt:[mt]).forEach(m=>m.dispose());}
+  });
+  scene.remove(mapGroup); mapGroup=null;
+}
+function clearPickups(){
+  for(const p of pickups)scene.remove(p.g);
+  pickups.length=0;
+}
+function buildMap(idx){
+  if(idx===currentMapIdx&&mapGroup)return;
+  disposeMapGroup();
+  clearPickups();
+  obstacles.length=0; colliderMeshes.length=0; pulseMats.length=0; lampLights.length=0;
+  const map=MAPS[idx]; MAP_SIZE=map.size; currentMapIdx=idx;
+  const SZ=MAP_SIZE;
+  mapGroup=new THREE.Group(); scene.add(mapGroup);
+  const add=m=>{mapGroup.add(m);return m;};
+  const cg=arenaTex('concrete');
   const floor=new THREE.Mesh(
-    new THREE.PlaneGeometry(ARENA*2,ARENA*2),
+    new THREE.PlaneGeometry(SZ*2,SZ*2),
     new THREE.MeshStandardMaterial({map:cg.map,normalMap:cg.nrm,roughness:0.94,metalness:0.04,envMapIntensity:0.55})
   );
-  floor.rotation.x=-Math.PI/2; floor.receiveShadow=true; scene.add(floor);
-  const bw=makeBrickTexture();
+  floor.rotation.x=-Math.PI/2; floor.receiveShadow=true; add(floor);
+  const bw=arenaTex('brick');
   const wallMat=new THREE.MeshStandardMaterial({map:bw.map,normalMap:bw.nrm,roughness:0.9,metalness:0.03,envMapIntensity:0.55});
   const edgeMat=new THREE.MeshBasicMaterial({color:0x00ffff});
   const H=5;
   const walls=[
-    {x:0,z:-ARENA,w:ARENA*2+2,d:1},{x:0,z:ARENA,w:ARENA*2+2,d:1},
-    {x:-ARENA,z:0,w:1,d:ARENA*2+2},{x:ARENA,z:0,w:1,d:ARENA*2+2}
+    {x:0,z:-SZ,w:SZ*2+2,d:1},{x:0,z:SZ,w:SZ*2+2,d:1},
+    {x:-SZ,z:0,w:1,d:SZ*2+2},{x:SZ,z:0,w:1,d:SZ*2+2}
   ];
   for(const wl of walls){
     const m=new THREE.Mesh(new THREE.BoxGeometry(wl.w,H,wl.d),wallMat);
     m.position.set(wl.x,H/2,wl.z);
     m.castShadow=true; m.receiveShadow=true;
-    scene.add(m); colliderMeshes.push(m);
+    add(m); colliderMeshes.push(m);
     const e=new THREE.Mesh(new THREE.BoxGeometry(wl.w===1?1.2:wl.w,0.14,wl.d===1?1.2:wl.d),edgeMat);
-    e.position.set(wl.x,H+0.05,wl.z); scene.add(e);
+    e.position.set(wl.x,H+0.05,wl.z); add(e);
   }
-  // 中央发光柱
+  // 混凝土柱
   const pilMat=new THREE.MeshBasicMaterial({color:0xff00ff});
   const pilMap=cg.map.clone(); pilMap.repeat.set(3,2); pilMap.needsUpdate=true;
   const pilNrm=cg.nrm.clone(); pilNrm.repeat.set(3,2); pilNrm.needsUpdate=true;
   const pilMat2=new THREE.MeshStandardMaterial({map:pilMap,normalMap:pilNrm,roughness:0.85,metalness:0.05,envMapIntensity:0.5,color:0xbfc3cc});
   const bandMat=new THREE.MeshStandardMaterial({color:0x2a2e36,roughness:0.45,metalness:0.75,envMapIntensity:0.8});
-  for(const sx of[-1,1])for(const sz of[-1,1]){
+  for(const pl of map.pillars){
+    const px0=pl[0],pz0=pl[1];
     const p=new THREE.Mesh(new THREE.CylinderGeometry(0.7,0.9,7,10),pilMat2);
-    p.position.set(sx*11,3.5,sz*11);
+    p.position.set(px0,3.5,pz0);
     p.castShadow=true; p.receiveShadow=true;
-    scene.add(p); colliderMeshes.push(p);
+    add(p); colliderMeshes.push(p);
     for(const by of[1.6,5.2]){
       const band=new THREE.Mesh(new THREE.TorusGeometry(0.8,0.07,8,28),bandMat);
-      band.rotation.x=Math.PI/2; band.position.set(sx*11,by,sz*11);
-      band.castShadow=true; scene.add(band);
+      band.rotation.x=Math.PI/2; band.position.set(px0,by,pz0);
+      band.castShadow=true; add(band);
     }
-    obstacles.push({min:new THREE.Vector3(sx*11-0.9,0,sz*11-0.9),max:new THREE.Vector3(sx*11+0.9,7,sz*11+0.9)});
+    obstacles.push({min:new THREE.Vector3(px0-0.9,0,pz0-0.9),max:new THREE.Vector3(px0+0.9,7,pz0+0.9)});
     const ring=new THREE.Mesh(new THREE.TorusGeometry(0.95,0.07,8,24),pilMat);
-    ring.rotation.x=Math.PI/2; ring.position.set(sx*11,0.4,sz*11); scene.add(ring);
+    ring.rotation.x=Math.PI/2; ring.position.set(px0,0.4,pz0); add(ring);
   }
-  // 掩体箱：金属贴图（铆钉/拼接缝/警示条纹）+ 部分叠放 + 发光描边
-  const STACKED=new Set([0,4,9]);
+  // 掩体箱
+  const STACKED=new Set(map.stacked);
   const crateTints=[0xffffff,0xffe2b8,0xbfe6ff];
-  const techTex=makeCrateTexture(false),hzTex=makeCrateTexture(true);
-  const spots=[
-    [-20,-6,3.4,2.6,2.6],[20,6,3.4,2.6,2.6],[-20,8,2.6,3.2,2.2],[20,-8,2.6,3.2,2.2],
-    [-7,-20,4.2,2.4,2.4],[7,20,4.2,2.4,2.4],[-7,20,2.4,2.4,3.0],[7,-20,2.4,2.4,3.0],
-    [0,-13,5.0,2.2,2.2],[0,13,5.0,2.2,2.2],[-26,20,3.0,2.4,2.4],[26,-20,3.0,2.4,2.4]
-  ];
+  const techTex=arenaTex('crate',false),hzTex=arenaTex('crate',true);
   let ci=0;
-  for(let si=0;si<spots.length;si++){
-    const s=spots[si];
+  for(let si=0;si<map.crates.length;si++){
+    const s=map.crates[si];
     const w=s[2],h=s[3],d=s[4];
     const hazard=si%4===3;
     const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),
       new THREE.MeshStandardMaterial({map:hazard?hzTex.map:techTex.map,normalMap:hazard?hzTex.nrm:techTex.nrm,roughness:0.5,metalness:0.45,envMapIntensity:0.9,color:crateTints[ci++%3]}));
     m.position.set(s[0],h/2,s[1]);
     m.castShadow=true; m.receiveShadow=true;
-    scene.add(m); colliderMeshes.push(m);
+    add(m); colliderMeshes.push(m);
     let topH=h;
     if(STACKED.has(si)){
       const w2=w*0.68,h2=h*0.55,d2=d*0.68;
@@ -808,55 +878,59 @@ function applyScene(i){
         new THREE.MeshStandardMaterial({map:techTex.map,normalMap:techTex.nrm,roughness:0.5,metalness:0.45,envMapIntensity:0.9,color:0xd8ecff}));
       m2.position.set(s[0],h+h2/2,s[1]); m2.rotation.y=0.12;
       m2.castShadow=true; m2.receiveShadow=true;
-      scene.add(m2); colliderMeshes.push(m2);
+      add(m2); colliderMeshes.push(m2);
       topH=h+h2;
     }
     obstacles.push({min:new THREE.Vector3(s[0]-w/2,0,s[1]-d/2),max:new THREE.Vector3(s[0]+w/2,topH,s[1]+d/2)});
     const trim=new THREE.Mesh(new THREE.BoxGeometry(w+0.08,0.12,d+0.08),
       new THREE.MeshBasicMaterial({color:hazard?0xff9628:0x00ffee}));
-    trim.position.set(s[0],topH+0.04,s[1]); scene.add(trim);
+    trim.position.set(s[0],topH+0.04,s[1]); add(trim);
   }
   // 中央竞技环（呼吸脉冲）
-  const ringMat1=new THREE.MeshBasicMaterial({color:0xff2fd6,transparent:true,opacity:0.7,side:THREE.DoubleSide});
-  const ring1=new THREE.Mesh(new THREE.RingGeometry(6.2,6.7,48),ringMat1);
-  ring1.rotation.x=-Math.PI/2; ring1.position.y=0.02; scene.add(ring1);
-  const ringMat2=new THREE.MeshBasicMaterial({color:0x00ffee,transparent:true,opacity:0.7,side:THREE.DoubleSide});
-  const ring2=new THREE.Mesh(new THREE.RingGeometry(2.9,3.15,40),ringMat2);
-  ring2.rotation.x=-Math.PI/2; ring2.position.y=0.02; scene.add(ring2);
-  pulseMats.push(ringMat1,ringMat2);
+  if(map.rings){
+    const ringMat1=new THREE.MeshBasicMaterial({color:0xff2fd6,transparent:true,opacity:0.7,side:THREE.DoubleSide});
+    const ring1=new THREE.Mesh(new THREE.RingGeometry(6.2,6.7,48),ringMat1);
+    ring1.rotation.x=-Math.PI/2; ring1.position.y=0.02; add(ring1);
+    const ringMat2=new THREE.MeshBasicMaterial({color:0x00ffee,transparent:true,opacity:0.7,side:THREE.DoubleSide});
+    const ring2=new THREE.Mesh(new THREE.RingGeometry(2.9,3.15,40),ringMat2);
+    ring2.rotation.x=-Math.PI/2; ring2.position.y=0.02; add(ring2);
+    pulseMats.push(ringMat1,ringMat2);
+  }
   // 十字导引光带
   const laneMat=new THREE.MeshBasicMaterial({color:0x00ffee,transparent:true,opacity:0.15});
   for(const rot of[0,Math.PI/2]){
-    const lane=new THREE.Mesh(new THREE.PlaneGeometry(ARENA*2,1.1),laneMat);
+    const lane=new THREE.Mesh(new THREE.PlaneGeometry(SZ*2,1.1),laneMat);
     lane.rotation.x=-Math.PI/2; lane.rotation.z=rot; lane.position.y=0.015;
-    scene.add(lane);
+    add(lane);
   }
   // 发光柱光带
   const stripMat=new THREE.MeshBasicMaterial({color:0x00ffee});
-  for(const sx of[-1,1])for(const sz of[-1,1]){
+  for(const pl of map.pillars){
     const strip=new THREE.Mesh(new THREE.BoxGeometry(0.14,6.6,0.14),stripMat);
-    const dx=-sx*11,dz=-sz*11,l=Math.hypot(dx,dz);
-    strip.position.set(sx*11+dx/l*0.95,3.3,sz*11+dz/l*0.95);
-    scene.add(strip);
+    const dx=-pl[0],dz=-pl[1],l=Math.hypot(dx,dz)||0.001;
+    strip.position.set(pl[0]+dx/l*0.95,3.3,pl[1]+dz/l*0.95);
+    add(strip);
   }
-  // 场地照明灯柱（可见灯具 + 真实点光源）
+  // 场地照明灯柱
   const poleMat=new THREE.MeshStandardMaterial({color:0x1a1d24,roughness:0.5,metalness:0.7});
   const lampMat=new THREE.MeshBasicMaterial({color:0xfff6e0});
-  for(const sx of[-1,1])for(const sz of[-1,1]){
-    const px=sx*27,pz=sz*27;
+  for(const pp of map.poles){
+    const px=pp[0],pz=pp[1];
     const pole=new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.3,9.5,8),poleMat);
     pole.position.set(px,4.75,pz); pole.castShadow=true;
-    scene.add(pole); colliderMeshes.push(pole);
+    add(pole); colliderMeshes.push(pole);
     obstacles.push({min:new THREE.Vector3(px-0.4,0,pz-0.4),max:new THREE.Vector3(px+0.4,9.5,pz+0.4)});
     const head=new THREE.Mesh(new THREE.BoxGeometry(1.6,0.5,0.7),lampMat);
-    head.position.set(px,9.7,pz); scene.add(head);
+    head.position.set(px,9.7,pz); add(head);
     const arm=new THREE.Mesh(new THREE.BoxGeometry(0.18,0.18,1.6),poleMat);
-    arm.position.set(px,9.35,pz); scene.add(arm);
+    arm.position.set(px,9.35,pz); add(arm);
     const lgt=new THREE.PointLight(0xfff2dd,90,62,1.8);
-    lgt.position.set(px,9.1,pz); scene.add(lgt);
+    lgt.position.set(px,9.1,pz); add(lgt);
     lampLights.push(lgt);
   }
-})();
+  for(const s of map.pickups)makePickup(s);
+  applyQuality(gameCfg.qIdx);
+}
 (function buildSky(){
   skyMesh=new THREE.Mesh(
     new THREE.SphereGeometry(210,32,16),
@@ -875,8 +949,8 @@ function collideCircle(pos,radius){
       else pos.x=o.max.x+radius;
     }
   }
-  pos.x=clamp(pos.x,-ARENA+1.2,ARENA-1.2);
-  pos.z=clamp(pos.z,-ARENA+1.2,ARENA-1.2);
+  pos.x=clamp(pos.x,-MAP_SIZE+1.2,MAP_SIZE-1.2);
+  pos.z=clamp(pos.z,-MAP_SIZE+1.2,MAP_SIZE-1.2);
 }
 const raycaster=new THREE.Raycaster(); raycaster.far=70;
 function hasLOS(from,to){
@@ -1196,7 +1270,7 @@ const DIFFS=[
 const ENEMY_OPTS=[3,5,8];
 const LEN_OPTS=[{t:'2 分钟',s:120},{t:'3 分钟',s:180},{t:'5 分钟',s:300}];
 const MAX_BOTS=8;
-const gameCfg={enemyIdx:1,diffIdx:1,lenIdx:1,sceneIdx:3,qIdx:1}; // 默认：5个 / 普通 / 3分钟 / 夜晚 / 精美
+const gameCfg={mapIdx:0,enemyIdx:1,diffIdx:1,lenIdx:1,sceneIdx:3,qIdx:1}; // 默认：标准图 / 5个 / 普通 / 3分钟 / 夜晚 / 精美
 let diffPreset=DIFFS[1];
 
 /* ================= 画质档位 ================= */
@@ -1228,7 +1302,7 @@ const BOT_NAMES=['BOT-1','BOT-2','BOT-3','BOT-4','BOT-5','BOT-6','BOT-7','BOT-8'
 let difficulty=0;
 function spawnPointFar(){
   for(let i=0;i<12;i++){
-    const x=rand(-ARENA+4,ARENA-4),z=rand(-ARENA+4,ARENA-4);
+    const x=rand(-MAP_SIZE+4,MAP_SIZE-4),z=rand(-MAP_SIZE+4,MAP_SIZE-4);
     if(Math.hypot(x-player.pos.x,z-player.pos.z)>16)return new THREE.Vector3(x,0,z);
   }
   return new THREE.Vector3(-player.pos.x*0.8,0,-player.pos.z*0.8);
@@ -1806,12 +1880,6 @@ function damagePlayer(dmg,fromName){
 }
 /* ================= 拾取物 & 血包 ================= */
 const pickups=[];
-const PICKUP_SPOTS=[
-  {x:-14,z:-14,type:'rifle'},{x:14,z:-14,type:'shotgun'},
-  {x:-14,z:14,type:'health'},{x:14,z:14,type:'health'},{x:0,z:0,type:'rifle'},
-  {x:0,z:-19,type:'awp'},{x:-19,z:0,type:'armor'},{x:19,z:0,type:'armor'},
-  {x:19,z:-19,type:'deagle'}
-];
 const PICKUP_STYLE={
   rifle:{color:0xffaa00,label:'AK-47'},
   shotgun:{color:0xff3355,label:'Nova'},
@@ -2168,6 +2236,7 @@ function resetGame(){
 function startGame(){
   initAudio();
   if(AC&&AC.state==='suspended')AC.resume();
+  buildMap(gameCfg.mapIdx); // 确保地图与选项一致
   resetGame();
   Music.start();
   state='playing';
@@ -2191,9 +2260,9 @@ function endGame(){
   $('over').style.display='flex';
 }
 /* ================= 个人战绩（按配置分组，localStorage 本地保存） ================= */
-const REC_KEY='neonArenaRecordsV2';
-function cfgKey(){return 'e'+gameCfg.enemyIdx+'-d'+gameCfg.diffIdx+'-l'+gameCfg.lenIdx;}
-function cfgName(){return ENEMY_OPTS[gameCfg.enemyIdx]+'个敌人 · '+DIFFS[gameCfg.diffIdx].name+' · '+LEN_OPTS[gameCfg.lenIdx].t;}
+const REC_KEY='neonArenaRecordsV3';
+function cfgKey(){return 'm'+gameCfg.mapIdx+'-e'+gameCfg.enemyIdx+'-d'+gameCfg.diffIdx+'-l'+gameCfg.lenIdx;}
+function cfgName(){return MAPS[gameCfg.mapIdx].name+' · '+ENEMY_OPTS[gameCfg.enemyIdx]+'个敌人 · '+DIFFS[gameCfg.diffIdx].name+' · '+LEN_OPTS[gameCfg.lenIdx].t;}
 function loadRecStore(){
   try{const r=JSON.parse(localStorage.getItem(REC_KEY)); if(r&&typeof r==='object')return r;}catch(e){}
   return {};
@@ -2268,13 +2337,14 @@ function updateFeat(){
 }
 function buildOptions(){
   const rows=[
+    ['rowMap',MAPS.map(m=>m.name),gameCfg.mapIdx,i=>{gameCfg.mapIdx=i;buildMap(i);}],
     ['rowEnemies',ENEMY_OPTS.map(n=>n+' 个'),gameCfg.enemyIdx,i=>{gameCfg.enemyIdx=i;applyBotCount();}],
     ['rowDiff',DIFFS.map(d=>d.name),gameCfg.diffIdx,i=>{gameCfg.diffIdx=i;}],
     ['rowLen',LEN_OPTS.map(l=>l.t),gameCfg.lenIdx,i=>{gameCfg.lenIdx=i;}],
     ['rowScene',SCENES.map(s=>s.name),gameCfg.sceneIdx,i=>{applyScene(i);}],
     ['rowQuality',QUALITY.map(q=>q.name),gameCfg.qIdx,i=>{applyQuality(i);}]
   ];
-  const labs=['敌人数量','敌人难度','对战时长','场景','画质'];
+  const labs=['地图','敌人数量','敌人难度','对战时长','场景','画质'];
   rows.forEach((r,ri)=>{
     const row=$(r[0]); row.innerHTML='';
     const s=document.createElement('span'); s.className='olab'; s.textContent=labs[ri];
@@ -2418,7 +2488,7 @@ buildOptions();
 applyBotCount();
 applyScene(gameCfg.sceneIdx);
 applyQuality(gameCfg.qIdx);
-for(const s of PICKUP_SPOTS)makePickup(s);
+buildMap(gameCfg.mapIdx);
 updateHpHUD(); updateAmmoHUD(); updateMoneyHUD(); updateNadeHUD();
 renderRecords();
 requestAnimationFrame(loop);
