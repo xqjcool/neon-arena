@@ -108,7 +108,10 @@
   .recGrid div{font-size:12px;color:#9ab;text-align:center;background:rgba(0,40,60,.4);border-radius:6px;padding:5px 2px;}
   .recGrid b{display:block;font-size:17px;color:#0ff;}
   #recList{max-height:150px;overflow-y:auto;margin-bottom:6px;}
-  .recRow{display:flex;justify-content:space-between;font-size:12px;color:#bcd;padding:4px 6px;border-bottom:1px solid rgba(0,255,255,.12);}
+  .recRow{display:grid;grid-template-columns:70px 1fr auto auto;gap:8px;font-size:12px;color:#bcd;
+    padding:4px 6px;border-bottom:1px solid rgba(0,255,255,.12);white-space:nowrap;text-align:left;}
+  #recToggle{display:block;margin:4px auto;background:none;border:1px solid rgba(0,255,255,.4);
+    color:#0ff;font-size:13px;border-radius:6px;padding:4px 16px;}
   #recEmpty{text-align:center;font-size:13px;color:#789;padding:8px;}
   #recClear{display:block;margin:2px auto 0;background:none;border:1px solid #446;color:#789;font-size:12px;border-radius:6px;padding:3px 12px;}
   #newRec{font-size:18px;font-weight:800;color:#ffd23f;margin-bottom:8px;animation:recPop 1s ease infinite alternate;}
@@ -138,10 +141,11 @@
   .screen{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
     justify-content:center;background:rgba(2,2,12,.72);backdrop-filter:blur(6px);pointer-events:auto;
     padding:20px;text-align:center;z-index:10;}
+  #menu{justify-content:flex-start;overflow-y:auto;}
   .title{font-size:44px;font-weight:900;letter-spacing:8px;color:#0ff;
     text-shadow:0 0 24px #0ff,0 0 60px #0ff;}
   .subtitle{margin-top:6px;font-size:14px;letter-spacing:6px;color:#f0f;}
-  .feats{margin:22px 0 6px;font-size:14px;line-height:2;color:#9db;text-align:left;}
+  .feats{margin:14px 0 4px;font-size:13px;line-height:1.9;color:#9db;text-align:center;max-width:600px;}
   .feats b{color:#ffd23f;}
   .bigbtn{margin-top:20px;padding:14px 58px;font-size:20px;font-weight:900;letter-spacing:4px;
     color:#021;border:none;border-radius:12px;background:linear-gradient(135deg,#00ffcc,#00aaff);
@@ -208,11 +212,8 @@
     <div class="optRow" id="rowScene"></div>
     <div class="optRow" id="rowQuality"></div>
     <div class="feats">
-      🔫 <b id="featMode">5 个敌人 · 普通难度 · 3 分钟</b>死斗<br/>
-      🎯 <b>手机自动开火</b>：准星变红自动射击 · 💥 <b>爆头双倍伤害</b><br/>
-      📦 拾取 <b>AK-47 / Nova / AWP / 护甲</b> · 🏆 连杀播报：双杀、三杀、暴走<br/>
-      💣 <b>G 键扔手雷</b>（高爆/闪光/烟雾） · 🔭 <b>AWP 右键开镜</b> · 💰 <b>B 键购买菜单</b><br/>
-      ⌨️ <b>TAB 计分板</b> · F 检视武器 · 击杀赚钱买装备
+      🎯 <b>手机自动开火</b> · 💥 <b>爆头双倍伤害</b> · 🏆 连杀播报 · 击杀赚钱买装备<br/>
+      📦 拾取武器/护甲 · 💣 <b>G</b> 扔雷 · 🔭 <b>AWP 右键</b>开镜 · 💰 <b>B</b> 购买 · ⌨️ <b>TAB</b> 计分 · <b>F</b> 检视
     </div>
     <button class="bigbtn" id="startBtn">开始战斗</button>
     <div id="recPanel"><div id="recTitle">🏆 我的战绩</div><div id="recBody"></div></div>
@@ -2229,7 +2230,8 @@ function renderRecords(){
     +'<div>最高连杀<b>'+t.bestStreak+'</b></div>'
     +'</div>';
   if(rec.matches.length){
-    h+='<div id="recList">'+rec.matches.map(m=>{
+    h+='<button id="recToggle">最近战绩 ('+rec.matches.length+') ▸</button>'
+      +'<div id="recList" style="display:none">'+rec.matches.map(m=>{
       const dt=new Date(m.t);
       const ds=(dt.getMonth()+1)+'/'+dt.getDate()+' '+pad2(dt.getHours())+':'+pad2(dt.getMinutes());
       return '<div class="recRow"><span>'+ds+'</span><span>'+m.k+'杀 / '+m.d+'死</span><span>'+m.hs+'爆头</span><span>连杀'+m.bs+'</span></div>';
@@ -2238,6 +2240,13 @@ function renderRecords(){
     h+='<div id="recEmpty">这个配置还没有战绩，去打一场吧</div>';
   }
   $('recBody').innerHTML=h;
+  const tg=$('recToggle');
+  if(tg)tg.addEventListener('click',()=>{
+    const l=$('recList');
+    const open=l.style.display==='none';
+    l.style.display=open?'block':'none';
+    tg.textContent='最近战绩 ('+rec.matches.length+') '+(open?'▾':'▸');
+  });
   const c=$('recClear');
   if(c)c.addEventListener('click',()=>{
     const s=loadRecStore(); delete s[cfgKey()];
@@ -2252,7 +2261,9 @@ $('ctrlHint').innerHTML=IS_TOUCH?
   '点击画面锁定鼠标 · WASD 移动 · 鼠标视角 · 左键射击<br/>R 换弹 · 1/2/3 切换武器 · 空格跳';
 /* ================= 开始页面选项 ================= */
 function updateFeat(){
-  $('featMode').textContent=ENEMY_OPTS[gameCfg.enemyIdx]+' 个敌人 · '+
+  const el=$('featMode');
+  if(!el)return;
+  el.textContent=ENEMY_OPTS[gameCfg.enemyIdx]+' 个敌人 · '+
     DIFFS[gameCfg.diffIdx].name+'难度 · '+LEN_OPTS[gameCfg.lenIdx].t;
 }
 function buildOptions(){
