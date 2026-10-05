@@ -102,7 +102,8 @@
   #buyHint{margin-top:10px;font-size:12px;color:#789;text-align:center;}
   #recPanel{margin:10px auto 0;max-width:440px;background:rgba(6,12,22,.75);border:1px solid rgba(255,210,63,.35);
     border-radius:10px;padding:10px 12px;}
-  #recTitle{font-size:15px;font-weight:800;color:#ffd23f;margin-bottom:8px;text-align:center;letter-spacing:2px;}
+  #recTitle{font-size:15px;font-weight:800;color:#ffd23f;margin-bottom:4px;text-align:center;letter-spacing:2px;}
+  #recCfg{text-align:center;font-size:12px;color:#0ff;margin-bottom:8px;letter-spacing:1px;}
   .recGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px;}
   .recGrid div{font-size:12px;color:#9ab;text-align:center;background:rgba(0,40,60,.4);border-radius:6px;padding:5px 2px;}
   .recGrid b{display:block;font-size:17px;color:#0ff;}
@@ -2052,28 +2053,38 @@ function endGame(){
   $('hud').style.display='none'; $('touchUI').style.display='none';
   $('over').style.display='flex';
 }
-/* ================= 个人战绩（localStorage 本地保存） ================= */
-const REC_KEY='neonArenaRecordsV1';
+/* ================= 个人战绩（按配置分组，localStorage 本地保存） ================= */
+const REC_KEY='neonArenaRecordsV2';
+function cfgKey(){return 'e'+gameCfg.enemyIdx+'-d'+gameCfg.diffIdx+'-l'+gameCfg.lenIdx;}
+function cfgName(){return ENEMY_OPTS[gameCfg.enemyIdx]+'个敌人 · '+DIFFS[gameCfg.diffIdx].name+' · '+LEN_OPTS[gameCfg.lenIdx].t;}
+function loadRecStore(){
+  try{const r=JSON.parse(localStorage.getItem(REC_KEY)); if(r&&typeof r==='object')return r;}catch(e){}
+  return {};
+}
+function blankRec(){return {matches:[],totals:{matches:0,kills:0,deaths:0,headshots:0,bestStreak:0,bestKills:0}};}
 function loadRecords(){
-  try{const r=JSON.parse(localStorage.getItem(REC_KEY)); if(r&&r.totals)return r;}catch(e){}
-  return {matches:[],totals:{matches:0,kills:0,deaths:0,headshots:0,bestStreak:0,bestKills:0}};
+  const store=loadRecStore(),k=cfgKey();
+  if(!store[k])store[k]=blankRec();
+  return store[k];
 }
 function saveMatch(){
-  const rec=loadRecords();
+  const store=loadRecStore(),k=cfgKey();
+  const rec=store[k]||(store[k]=blankRec());
   const m={t:Date.now(),k:player.kills,d:player.deaths,hs:player.headshots,bs:player.bestStreak,s:player.score||0};
   rec.matches.unshift(m); rec.matches=rec.matches.slice(0,20);
   const t=rec.totals;
   t.matches++; t.kills+=m.k; t.deaths+=m.d; t.headshots+=m.hs;
   const newBest=m.k>t.bestKills&&m.k>0; t.bestKills=Math.max(t.bestKills,m.k);
   t.bestStreak=Math.max(t.bestStreak,m.bs);
-  try{localStorage.setItem(REC_KEY,JSON.stringify(rec));}catch(e){}
+  try{localStorage.setItem(REC_KEY,JSON.stringify(store));}catch(e){}
   return newBest;
 }
 function pad2(n){return (n<10?'0':'')+n;}
 function renderRecords(){
   const rec=loadRecords(),t=rec.totals;
   const kd=t.deaths?(t.kills/t.deaths).toFixed(2):(''+t.kills);
-  let h='<div class="recGrid">'
+  let h='<div id="recCfg">'+cfgName()+'</div>'
+    +'<div class="recGrid">'
     +'<div>总场次<b>'+t.matches+'</b></div>'
     +'<div>总击杀<b>'+t.kills+'</b></div>'
     +'<div>K/D<b>'+kd+'</b></div>'
@@ -2086,13 +2097,17 @@ function renderRecords(){
       const dt=new Date(m.t);
       const ds=(dt.getMonth()+1)+'/'+dt.getDate()+' '+pad2(dt.getHours())+':'+pad2(dt.getMinutes());
       return '<div class="recRow"><span>'+ds+'</span><span>'+m.k+'杀 / '+m.d+'死</span><span>'+m.hs+'爆头</span><span>连杀'+m.bs+'</span></div>';
-    }).join('')+'</div><button id="recClear">清空战绩</button>';
+    }).join('')+'</div><button id="recClear">清空本配置战绩</button>';
   }else{
-    h+='<div id="recEmpty">还没有战绩，去打一场吧</div>';
+    h+='<div id="recEmpty">这个配置还没有战绩，去打一场吧</div>';
   }
   $('recBody').innerHTML=h;
   const c=$('recClear');
-  if(c)c.addEventListener('click',()=>{try{localStorage.removeItem(REC_KEY);}catch(e){} renderRecords();});
+  if(c)c.addEventListener('click',()=>{
+    const s=loadRecStore(); delete s[cfgKey()];
+    try{localStorage.setItem(REC_KEY,JSON.stringify(s));}catch(e){}
+    renderRecords();
+  });
 }
 $('startBtn').addEventListener('click',startGame);
 $('againBtn').addEventListener('click',startGame);
@@ -2120,7 +2135,7 @@ function buildOptions(){
     r[1].forEach((t,i)=>{
       const b=document.createElement('button');
       b.className='optBtn'+(i===r[2]?' sel':''); b.textContent=t;
-      b.addEventListener('click',()=>{initAudio();sfxPickup();r[3](i);buildOptions();});
+      b.addEventListener('click',()=>{initAudio();sfxPickup();r[3](i);buildOptions();renderRecords();});
       row.appendChild(b);
     });
   });
