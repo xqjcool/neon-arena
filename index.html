@@ -291,11 +291,11 @@ function mechClick(t,vol,f){
   o.start(t); o.stop(t+0.05);
 }
 const GUN_SND={
-  smg:    {crack:2500,body:1300,bodyT:0.13,thump:100,thumpT:0.15,v:0.85}, // MP5：脆
-  rifle:  {crack:1400,body:620, bodyT:0.24,thump:68, thumpT:0.26,v:1.0},  // AK-47：沉
-  shotgun:{crack:800, body:380, bodyT:0.34,thump:52, thumpT:0.36,v:1.1},  // Nova：轰
-  awp:    {crack:1000,body:500, bodyT:0.30,thump:55, thumpT:0.35,v:1.15}, // AWP：重炮
-  deagle: {crack:2000,body:900, bodyT:0.18,thump:80, thumpT:0.20,v:1.0},  // 沙鹰：大口径手枪
+  smg:    {crack:3600,body:2200,bodyT:0.07,thump:160,thumpT:0.08,v:0.75}, // MP5：9mm短促脆响
+  rifle:  {crack:1800,body:800, bodyT:0.18,thump:70, thumpT:0.22,v:1.0},  // AK-47：7.62浑厚长音
+  shotgun:{crack:1100,body:500, bodyT:0.30,thump:50, thumpT:0.40,v:1.15}, // Nova：12号轰鸣
+  awp:    {crack:800, body:350, bodyT:0.45,thump:40, thumpT:0.55,v:1.2},  // AWP：重炮长尾音
+  deagle: {crack:1500,body:600, bodyT:0.25,thump:60, thumpT:0.30,v:1.05}, // 沙鹰：手炮闷响
   enemy:  {crack:1800,body:1000,bodyT:0.12,thump:90, thumpT:0.14,v:0.35}
 };
 function sfxShoot(k){
@@ -306,6 +306,8 @@ function sfxShoot(k){
   nzBurst(t,p.bodyT,0.42*v,'lowpass',p.body);
   thumpSfx(t,p.thump,p.thumpT,0.55*v);
   mechClick(t+0.015,0.06*v,3400);
+  if(k==='shotgun'){mechClick(t+0.32,0.10,1700);mechClick(t+0.44,0.12,2600);} // 泵动上膛
+  else if(k==='awp'){mechClick(t+0.55,0.10,1300);mechClick(t+0.78,0.12,2300);}  // 拉枪机
 }
 const sfxHit=()=>tone(1350,0.06,'square',0.16);
 const sfxHeadshot=()=>{ // CS 式爆头金属"叮"
@@ -887,11 +889,13 @@ function hasLOS(from,to){
 
 /* ================= 武器配置 ================= */
 const WEAPONS={
-  smg:    {name:'MP5',  dmg:12,interval:0.11,mag:30,reload:1.3,spread:0.028,pellets:1,auto:true, kick:0.0035,color:0x00ffcc,mz:-1.06},
-  rifle:  {name:'AK-47',dmg:26,interval:0.17,mag:20,reload:1.8,spread:0.011,pellets:1,auto:true, kick:0.006, color:0xffaa00,mz:-1.32},
-  shotgun:{name:'Nova', dmg:9, interval:0.85,mag:6, reload:2.2,spread:0.075,pellets:8,auto:false,kick:0.02,  color:0xff3355,mz:-1.12},
-  awp:    {name:'AWP',  dmg:105,interval:1.5,mag:5, reload:3.2,spread:0.09, pellets:1,auto:false,kick:0.035, color:0x66ccff,mz:-1.34,scopedSpread:0.0008},
-  deagle: {name:'沙漠之鹰',dmg:45,interval:0.32,mag:7,reload:1.8,spread:0.008,pellets:1,auto:false,kick:0.012, color:0xffcc44,mz:-0.78}
+  // dmg:单发伤害 interval:射速(秒) mag:弹匣 spread:基础散布 kick:垂直后座 yawKick:水平抖动
+  // movePen:移动射击惩罚 bloomAdd:连射扩散积累
+  smg:    {name:'MP5',  dmg:11,interval:0.09, mag:30,reload:1.3,spread:0.026,pellets:1,auto:true, kick:0.003, yawKick:0.001,movePen:0.35,bloomAdd:3, color:0x00ffcc,mz:-1.06},
+  rifle:  {name:'AK-47',dmg:30,interval:0.13, mag:30,reload:1.8,spread:0.011,pellets:1,auto:true, kick:0.009, yawKick:0.004,movePen:1.0, bloomAdd:6, color:0xffaa00,mz:-1.32},
+  shotgun:{name:'Nova', dmg:9, interval:0.95,mag:6, reload:2.2,spread:0.075,pellets:8,auto:false,kick:0.024, yawKick:0.006,movePen:0.6, bloomAdd:9, color:0xff3355,mz:-1.12},
+  awp:    {name:'AWP',  dmg:105,interval:1.5,mag:5, reload:3.2,spread:0.09, pellets:1,auto:false,kick:0.035, yawKick:0.008,movePen:2.5, bloomAdd:12,color:0x66ccff,mz:-1.34,scopedSpread:0.0008},
+  deagle: {name:'沙漠之鹰',dmg:50,interval:0.30,mag:7,reload:1.8,spread:0.008,pellets:1,auto:false,kick:0.016, yawKick:0.005,movePen:0.5, bloomAdd:7, color:0xffcc44,mz:-0.78}
 };
 const WEAPON_ORDER=['smg','rifle','shotgun','awp','deagle'];
 
@@ -1654,6 +1658,25 @@ function checkAutoTarget(){
   if(hits.length>0&&hits[0].distance<40)autoTarget=true;
   $('cross').classList.toggle('hot',autoTarget);
 }
+function dmgFalloff(key,d){ // 伤害随距离衰减：每种枪特性不同
+  if(key==='shotgun'){ // 霰弹：8米内全额，22米外只剩25%
+    if(d<8)return 1; if(d>22)return 0.25;
+    return 1-(d-8)/14*0.75;
+  }
+  if(key==='smg'){ // 冲锋枪：中距离开始衰减
+    if(d<12)return 1; if(d>30)return 0.6;
+    return 1-(d-12)/18*0.4;
+  }
+  if(key==='deagle'){ // 沙鹰：手枪弹远距离掉得快
+    if(d<10)return 1; if(d>28)return 0.55;
+    return 1-(d-10)/18*0.45;
+  }
+  if(key==='rifle'){ // 步枪：衰减最轻微
+    if(d<15)return 1; if(d>35)return 0.75;
+    return 1-(d-15)/20*0.25;
+  }
+  return 1; // AWP：狙击无衰减
+}
 function tryFire(){
   const w=WEAPONS[player.cur];
   if(player.fireCd>0||player.reloading>0||!player.alive||state!=='playing')return;
@@ -1665,10 +1688,11 @@ function tryFire(){
   player.shots++;
   updateAmmoHUD();
   if(player.ammo[player.cur]===0)startReload();
-  // 后座
+  // 后座：每种枪手感不同（AK上跳+左右抖，MP5稳）
   player.pitch=clamp(player.pitch+w.kick*rand(0.7,1.3),-1.45,1.45);
+  player.yaw+=rand(-1,1)*(w.yawKick||0);
   player.fovKick=Math.min(4,player.fovKick+1.2);
-  player.bloom=Math.min(22,player.bloom+5);
+  player.bloom=Math.min(22,player.bloom+(w.bloomAdd||5)); // 连射扩散积累
   gunKick=0.09; muzzleT=0.05;
   muzzle.material.opacity=0.95;
   muzzleLight.intensity=30;
@@ -1680,7 +1704,11 @@ function tryFire(){
   _origin.copy(camera.position);
   const from=_origin.clone().add(_dir.clone().multiplyScalar(0.6));
   let anyHit=false;
-  const spread=(player.cur==='awp'&&wasScoped)?w.scopedSpread:w.spread;
+  // 实际散布 = 基础 × 连射扩散 × 移动惩罚（准星会诚实反映）
+  const moveMul=1+(player.moving?(w.movePen||0):0);
+  const sprayMul=1+player.bloom*0.05;
+  const baseSpread=(player.cur==='awp'&&wasScoped)?w.scopedSpread:w.spread;
+  const spread=baseSpread*sprayMul*moveMul;
   for(let p=0;p<w.pellets;p++){
     _v1.copy(_dir);
     _v1.x+=rand(-spread,spread);_v1.y+=rand(-spread,spread);_v1.z+=rand(-spread,spread);
@@ -1695,7 +1723,8 @@ function tryFire(){
       const ud=h.object.userData;
       if(ud.bot&&ud.bot.alive){ // 命中机器人
         const headshot=ud.part==='head';
-        const dmg=w.dmg*(headshot?2:1);
+        const shotDist=_origin.distanceTo(h.point);
+        const dmg=w.dmg*(headshot?2:1)*dmgFalloff(player.cur,shotDist);
         damageBot(ud.bot,dmg,h.point,headshot);
         anyHit=true; end=h.point; break;
       }else if(ud.bot&&!ud.bot.alive){continue;}
@@ -2277,6 +2306,7 @@ function updatePlayer(dt){
   f+=-joy.y; s+=joy.x;
   const len=Math.hypot(f,s);
   if(len>1){f/=len;s/=len;}
+  player.moving=len>0.1; // 移动射击惩罚用
   const sp=8;
   const sy=Math.sin(player.yaw),cy=Math.cos(player.yaw);
   player.pos.x+=((-sy)*f+cy*s)*sp*dt;
