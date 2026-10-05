@@ -82,6 +82,7 @@
   #armorfill{height:100%;width:0%;background:linear-gradient(90deg,#4488ff,#66ccff);}
   #nadeLine{font-size:12px;color:#ffd23f;margin-top:2px;letter-spacing:1px;}
   #money{font-size:18px;font-weight:800;color:#7dff9a;text-shadow:0 0 10px #0a4;}
+  #roundScore{font-size:16px;font-weight:800;color:#ffd23f;text-shadow:0 0 10px #fa0;display:none;}
   #scoreboard{position:absolute;left:50%;top:14%;transform:translateX(-50%);display:none;z-index:20;
     background:rgba(4,8,16,.92);border:1px solid rgba(0,255,255,.5);border-radius:10px;padding:10px 14px;min-width:min(420px,86vw);}
   #scoreboard table{width:100%;border-collapse:collapse;font-size:14px;}
@@ -171,7 +172,7 @@
   <canvas id="game"></canvas>
 
   <div id="hud" class="layer">
-    <div id="topbar"><div id="timer">3:00</div><div id="score">0 击杀</div><div id="money">$800</div></div>
+    <div id="topbar"><div id="timer">3:00</div><div id="score">0 击杀</div><div id="money">$800</div><div id="roundScore"></div></div>
     <div id="hpwrap"><div id="hpbar"><div id="hpfill"></div></div><div id="armorbar"><div id="armorfill"></div></div><div id="hptext">HP 100</div></div>
     <div id="wpn">
       <div id="wpnName">MP5</div><div id="ammo">30</div><div id="nadeLine">💣×1 ⚡×1 💨×1</div><br/>
@@ -206,6 +207,7 @@
   <div id="menu" class="screen">
     <div class="title">霓虹竞技场</div>
     <div class="subtitle">NEON ARENA</div>
+    <div class="optRow" id="rowMode"></div>
     <div class="optRow" id="rowMap"></div>
     <div class="optRow" id="rowEnemies"></div>
     <div class="optRow" id="rowDiff"></div>
@@ -214,7 +216,7 @@
     <div class="optRow" id="rowQuality"></div>
     <div class="feats">
       🎯 <b>手机自动开火</b> · 💥 <b>爆头双倍伤害</b> · 🏆 连杀播报 · 击杀赚钱买装备<br/>
-      📦 拾取武器/护甲 · 💣 <b>G</b> 扔雷 · 🔭 <b>AWP 右键</b>开镜 · 💰 <b>B</b> 购买 · ⌨️ <b>TAB</b> 计分 · <b>F</b> 检视
+      ⚔️ <b>回合制</b>：先到 5 胜 · 无重生 · 金钱跨回合 · 📦 拾取武器/护甲 · 💣 <b>G</b> 扔雷 · 🔭 <b>AWP 右键</b>开镜 · 💰 <b>B</b> 购买 · ⌨️ <b>TAB</b> 计分 · <b>F</b> 检视
     </div>
     <button class="bigbtn" id="startBtn">开始战斗</button>
     <div id="recPanel"><div id="recTitle">🏆 我的战绩</div><div id="recBody"></div></div>
@@ -1419,7 +1421,17 @@ const DIFFS=[
 const ENEMY_OPTS=[3,5,8];
 const LEN_OPTS=[{t:'2 分钟',s:120},{t:'3 分钟',s:180},{t:'5 分钟',s:300}];
 const MAX_BOTS=8;
-const gameCfg={mapIdx:0,enemyIdx:1,diffIdx:1,lenIdx:1,sceneIdx:3,qIdx:1}; // 默认：标准图 / 5个 / 普通 / 3分钟 / 夜晚 / 精美
+const gameCfg={modeIdx:0,mapIdx:0,enemyIdx:1,diffIdx:1,lenIdx:1,sceneIdx:3,qIdx:1}; // 默认：死斗 / 标准图 / 5个 / 普通 / 3分钟 / 夜晚 / 精美
+const MODES=['死斗','回合制'];
+const isRound=()=>gameCfg.modeIdx===1;
+/* ================= 回合制状态 ================= */
+let roundNum=0,winsP=0,winsB=0,roundPhase='fight',roundPhaseT=0,roundTimeLeft=0;
+const WIN_ROUNDS=5,MAX_ROUNDS=9,ROUND_TIME=100,BUY_TIME=3.5;
+function updateRoundHUD(){
+  const el=$('roundScore');
+  el.style.display=isRound()?'block':'none';
+  if(isRound())el.textContent='第'+roundNum+'回合 '+winsP+' : '+winsB;
+}
 let diffPreset=DIFFS[1];
 
 /* ================= 画质档位 ================= */
@@ -1645,6 +1657,7 @@ let lastNoiseT=-99,lastNoiseX=0,lastNoiseZ=0;
 function makeNoise(x,z){lastNoiseT=elapsed;lastNoiseX=x;lastNoiseZ=z;}
 function updateBot(bot,dt){
   if(!bot.enabled)return;
+  if(isRound()&&roundPhase==='buy')return; // 购买阶段冻结
   if(bot.dying){ // 倒地动画
     bot.dieT+=dt;
     const k=Math.min(bot.dieT/0.38,1);
@@ -1655,7 +1668,7 @@ function updateBot(bot,dt){
   }
   if(!bot.alive){
     bot.respawnT-=dt;
-    if(bot.respawnT<=0&&state==='playing')respawnBot(bot,false);
+    if(bot.respawnT<=0&&state==='playing'&&!isRound())respawnBot(bot,false);
     return;
   }
   _v1.set(player.pos.x-bot.pos.x,0,player.pos.z-bot.pos.z);
@@ -1904,6 +1917,7 @@ function dmgFalloff(key,d){ // 伤害随距离衰减：每种枪特性不同
 function tryFire(){
   const w=WEAPONS[player.cur];
   if(player.fireCd>0||player.reloading>0||!player.alive||state!=='playing')return;
+  if(isRound()&&roundPhase!=='fight')return;
   const wantFire=firing||(autoFire&&autoTarget);
   if(!wantFire)return;
   if(player.ammo[player.cur]<=0){sfxEmpty();startReload();player.fireCd=0.25;return;}
@@ -2004,6 +2018,7 @@ function killBot(bot,headshot){
   // Doom式：击杀掉血包，奖励进攻
   if(Math.random()<0.4)spawnOrb(_v1.clone());
   else if(player.hp<60)spawnOrb(_v1.clone());
+  if(isRound()&&allBotsDead())winRound();
 }
 function damagePlayer(dmg,fromName){
   if(!player.alive||player.invuln>0||state!=='playing')return;
@@ -2022,7 +2037,8 @@ function damagePlayer(dmg,fromName){
     gun.visible=false;
     const kb=bots.find(x=>x.name===fromName); if(kb)kb.kills++;
     feedKill(fromName,'你',false);
-    announce('你被击倒了');
+    if(isRound())loseRound(false);
+    else announce('你被击倒了');
     sfxDie();
     updateHpHUD();
   }
@@ -2170,6 +2186,7 @@ const NADE_STYLE={he:{icon:'💣',name:'高爆雷'},flash:{icon:'⚡',name:'闪�
 const sfxThrow=()=>{if(AC&&!muted)nzBurst(AC.currentTime,0.15,0.12,'bandpass',1200);};
 function throwNade(){
   if(state!=='playing'||!player.alive||player.reloading>0)return;
+  if(isRound()&&roundPhase!=='fight')return;
   const type=NADE_ORDER.find(t=>player.nades[t]>0);
   if(!type){announce('没有手雷了');sfxEmpty();return;}
   player.nades[type]--;
@@ -2387,12 +2404,47 @@ function startGame(){
   if(AC&&AC.state==='suspended')AC.resume();
   buildMap(gameCfg.mapIdx); // 确保地图与选项一致
   resetGame();
+  if(isRound()){winsP=0;winsB=0;startRound(1);}
+  else updateRoundHUD();
   Music.start();
   state='playing';
   $('menu').style.display='none'; $('over').style.display='none';
   $('hud').style.display='block';
   if(IS_TOUCH)$('touchUI').style.display='block';
-  announce('战斗开始！');
+  if(!isRound())announce('战斗开始！');
+}
+/* ================= 回合制流程 ================= */
+function allBotsDead(){return !bots.some(b=>b.enabled&&b.alive&&!b.dying);}
+function resetRound(){ // 回合重置：位置/血量/弹药回满，保留武器和金钱
+  player.pos.set(0,0,Math.min(24,MAP_SIZE-4)); player.yaw=Math.PI; player.pitch=0;
+  player.hp=100; player.alive=true; player.invuln=0; player.vy=0; player.y=0;
+  player.reloading=0; player.fireCd=0; player.scoped=false; player.blindT=0;
+  for(const k in player.ammo)player.ammo[k]=WEAPONS[k].mag;
+  player.streak=0; player.multi=0; player.shake=0; player.bloom=0;
+  gun.visible=true; applyScope();
+  firing=false;
+  for(const n of nades)scene.remove(n.m); nades.length=0;
+  for(const s of smokes){scene.remove(s.sp); s.sp.material.dispose();} smokes.length=0;
+  applyBotCount();
+  updateHpHUD(); updateAmmoHUD(); updateNadeHUD(); updateMoneyHUD();
+}
+function startRound(n){
+  roundNum=n; roundPhase='buy'; roundPhaseT=BUY_TIME; roundTimeLeft=ROUND_TIME;
+  resetRound();
+  updateRoundHUD();
+  announce('第 '+n+' 回合 · 按 B 购买装备');
+}
+function winRound(){
+  if(!isRound()||roundPhase!=='fight')return;
+  roundPhase='over'; roundPhaseT=3;
+  winsP++; player.money+=3250; updateMoneyHUD(); updateRoundHUD();
+  announce('回合胜利！ +$3250'); sfxKill();
+}
+function loseRound(timeout){
+  if(!isRound()||roundPhase!=='fight')return;
+  roundPhase='over'; roundPhaseT=3;
+  winsB++; player.money+=1400; updateMoneyHUD(); updateRoundHUD();
+  announce(timeout?'时间到 · 回合失败 +$1400':'回合失败 +$1400');
 }
 function endGame(){
   state='over';
@@ -2401,6 +2453,8 @@ function endGame(){
   const newBest=saveMatch(); // 保存本场战绩
   const acc=player.shots>0?Math.round(player.hits/player.shots*100):0;
   $('overStats').innerHTML=
+    (isRound()?'<div style="font-size:26px;color:#ffd23f;margin-bottom:6px">回合 '+winsP+' : '+winsB+'</div>'+
+      (winsP>winsB?'<div id="newRec">🏆 比赛胜利！</div>':''):'')+
     (newBest?'<div id="newRec">🏆 新纪录！单场击杀新高</div>':'')+
     '击杀 <b>'+player.kills+'</b> &nbsp; 阵亡 <b>'+player.deaths+'</b><br/>'+
     '命中率 <b>'+acc+'%</b> &nbsp; 最高连杀 <b>'+player.bestStreak+'</b><br/>'+
@@ -2409,9 +2463,9 @@ function endGame(){
   $('over').style.display='flex';
 }
 /* ================= 个人战绩（按配置分组，localStorage 本地保存） ================= */
-const REC_KEY='neonArenaRecordsV3';
-function cfgKey(){return 'm'+gameCfg.mapIdx+'-e'+gameCfg.enemyIdx+'-d'+gameCfg.diffIdx+'-l'+gameCfg.lenIdx;}
-function cfgName(){return MAPS[gameCfg.mapIdx].name+' · '+ENEMY_OPTS[gameCfg.enemyIdx]+'个敌人 · '+DIFFS[gameCfg.diffIdx].name+' · '+LEN_OPTS[gameCfg.lenIdx].t;}
+const REC_KEY='neonArenaRecordsV4';
+function cfgKey(){return 'md'+gameCfg.modeIdx+'-m'+gameCfg.mapIdx+'-e'+gameCfg.enemyIdx+'-d'+gameCfg.diffIdx+'-l'+gameCfg.lenIdx;}
+function cfgName(){return MODES[gameCfg.modeIdx]+' · '+MAPS[gameCfg.mapIdx].name+' · '+ENEMY_OPTS[gameCfg.enemyIdx]+'个敌人 · '+DIFFS[gameCfg.diffIdx].name+(isRound()?'':' · '+LEN_OPTS[gameCfg.lenIdx].t);}
 function loadRecStore(){
   try{const r=JSON.parse(localStorage.getItem(REC_KEY)); if(r&&typeof r==='object')return r;}catch(e){}
   return {};
@@ -2486,14 +2540,17 @@ function updateFeat(){
 }
 function buildOptions(){
   const rows=[
+    ['rowMode',MODES,gameCfg.modeIdx,i=>{gameCfg.modeIdx=i;}],
     ['rowMap',MAPS.map(m=>m.name),gameCfg.mapIdx,i=>{gameCfg.mapIdx=i;buildMap(i);}],
     ['rowEnemies',ENEMY_OPTS.map(n=>n+' 个'),gameCfg.enemyIdx,i=>{gameCfg.enemyIdx=i;applyBotCount();}],
-    ['rowDiff',DIFFS.map(d=>d.name),gameCfg.diffIdx,i=>{gameCfg.diffIdx=i;}],
-    ['rowLen',LEN_OPTS.map(l=>l.t),gameCfg.lenIdx,i=>{gameCfg.lenIdx=i;}],
-    ['rowScene',SCENES.map(s=>s.name),gameCfg.sceneIdx,i=>{applyScene(i);}],
-    ['rowQuality',QUALITY.map(q=>q.name),gameCfg.qIdx,i=>{applyQuality(i);}]
+    ['rowDiff',DIFFS.map(d=>d.name),gameCfg.diffIdx,i=>{gameCfg.diffIdx=i;}]
   ];
-  const labs=['地图','敌人数量','敌人难度','对战时长','场景','画质'];
+  const labs=['模式','地图','敌人数量','敌人难度'];
+  if(!isRound()){rows.push(['rowLen',LEN_OPTS.map(l=>l.t),gameCfg.lenIdx,i=>{gameCfg.lenIdx=i;}]);labs.push('对战时长');}
+  rows.push(['rowScene',SCENES.map(s=>s.name),gameCfg.sceneIdx,i=>{applyScene(i);}]);
+  rows.push(['rowQuality',QUALITY.map(q=>q.name),gameCfg.qIdx,i=>{applyQuality(i);}]);
+  labs.push('场景','画质');
+  $('rowLen').style.display=isRound()?'none':'';
   rows.forEach((r,ri)=>{
     const row=$(r[0]); row.innerHTML='';
     const s=document.createElement('span'); s.className='olab'; s.textContent=labs[ri];
@@ -2516,6 +2573,7 @@ $('menuBtn').addEventListener('click',()=>{
 /* ================= 玩家更新 ================= */
 function updatePlayer(dt){
   if(!player.alive){
+    if(isRound())return; // 回合制：死亡等下回合
     player.respawnT-=dt;
     if(player.respawnT<=0){
       player.pos.set(0,0,Math.min(24,MAP_SIZE-4)); player.hp=100; player.alive=true; player.invuln=2;
@@ -2526,6 +2584,7 @@ function updatePlayer(dt){
     return;
   }
   if(player.invuln>0)player.invuln-=dt;
+  if(isRound()&&roundPhase!=='fight')return; // 购买/结算阶段冻结
   // 移动
   let f=0,s=0;
   if(keys.KeyW||keys.ArrowUp)f+=1;
@@ -2590,11 +2649,31 @@ function updatePlayer(dt){
   // 计时
   elapsed+=dt;
   difficulty=clamp(elapsed/150,0,1);
-  const left=Math.max(0,matchLen-elapsed);
-  const mm=Math.floor(left/60),ss=Math.floor(left%60);
-  $('timer').textContent=mm+':'+(ss<10?'0':'')+ss;
-  $('timer').style.color=left<30?'#ff4455':'#0ff';
-  if(left<=0)endGame();
+  if(isRound()){
+    if(roundPhase==='buy'){
+      roundPhaseT-=dt;
+      if(roundPhaseT<=0){roundPhase='fight';announce('战斗开始！');}
+    }else if(roundPhase==='over'){
+      roundPhaseT-=dt;
+      if(roundPhaseT<=0){
+        if(winsP>=WIN_ROUNDS||winsB>=WIN_ROUNDS||roundNum>=MAX_ROUNDS)endGame();
+        else startRound(roundNum+1);
+      }
+    }else{
+      roundTimeLeft-=dt;
+      if(roundTimeLeft<=0&&player.alive)winRound(); // 存活到时间结束算赢
+    }
+    const rl=Math.max(0,roundTimeLeft);
+    const rmm=Math.floor(rl/60),rss=Math.floor(rl%60);
+    $('timer').textContent=rmm+':'+(rss<10?'0':'')+rss;
+    $('timer').style.color=rl<15?'#ff4455':'#0ff';
+  }else{
+    const left=Math.max(0,matchLen-elapsed);
+    const mm=Math.floor(left/60),ss=Math.floor(left%60);
+    $('timer').textContent=mm+':'+(ss<10?'0':'')+ss;
+    $('timer').style.color=left<30?'#ff4455':'#0ff';
+    if(left<=0)endGame();
+  }
 }
 /* ================= 主循环 ================= */
 let lastT=0,menuAngle=0;
