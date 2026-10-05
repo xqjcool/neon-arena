@@ -100,6 +100,18 @@
   .buyItem span{color:#7dff9a;font-weight:700;}
   .buyItem.dis{opacity:.38;}
   #buyHint{margin-top:10px;font-size:12px;color:#789;text-align:center;}
+  #recPanel{margin:10px auto 0;max-width:440px;background:rgba(6,12,22,.75);border:1px solid rgba(255,210,63,.35);
+    border-radius:10px;padding:10px 12px;}
+  #recTitle{font-size:15px;font-weight:800;color:#ffd23f;margin-bottom:8px;text-align:center;letter-spacing:2px;}
+  .recGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px;}
+  .recGrid div{font-size:12px;color:#9ab;text-align:center;background:rgba(0,40,60,.4);border-radius:6px;padding:5px 2px;}
+  .recGrid b{display:block;font-size:17px;color:#0ff;}
+  #recList{max-height:150px;overflow-y:auto;margin-bottom:6px;}
+  .recRow{display:flex;justify-content:space-between;font-size:12px;color:#bcd;padding:4px 6px;border-bottom:1px solid rgba(0,255,255,.12);}
+  #recEmpty{text-align:center;font-size:13px;color:#789;padding:8px;}
+  #recClear{display:block;margin:2px auto 0;background:none;border:1px solid #446;color:#789;font-size:12px;border-radius:6px;padding:3px 12px;}
+  #newRec{font-size:18px;font-weight:800;color:#ffd23f;margin-bottom:8px;animation:recPop 1s ease infinite alternate;}
+  @keyframes recPop{from{transform:scale(1);}to{transform:scale(1.08);}}
   #lowhp{position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 55%,rgba(255,0,30,.5));
     opacity:0;}
   #lowhp.on{animation:lowpulse 1s infinite;}
@@ -202,6 +214,7 @@
       ⌨️ <b>TAB 计分板</b> · F 检视武器 · 击杀赚钱买装备
     </div>
     <button class="bigbtn" id="startBtn">开始战斗</button>
+    <div id="recPanel"><div id="recTitle">🏆 我的战绩</div><div id="recBody"></div></div>
     <div class="hint" id="ctrlHint"></div>
   </div>
 
@@ -2029,13 +2042,57 @@ function endGame(){
   state='over';
   firing=false;
   Music.stop();
-  $('hud').style.display='none'; $('touchUI').style.display='none';
+  const newBest=saveMatch(); // 保存本场战绩
   const acc=player.shots>0?Math.round(player.hits/player.shots*100):0;
   $('overStats').innerHTML=
+    (newBest?'<div id="newRec">🏆 新纪录！单场击杀新高</div>':'')+
     '击杀 <b>'+player.kills+'</b> &nbsp; 阵亡 <b>'+player.deaths+'</b><br/>'+
     '命中率 <b>'+acc+'%</b> &nbsp; 最高连杀 <b>'+player.bestStreak+'</b><br/>'+
     '总分 <b>'+(player.score||0)+'</b>';
+  $('hud').style.display='none'; $('touchUI').style.display='none';
   $('over').style.display='flex';
+}
+/* ================= 个人战绩（localStorage 本地保存） ================= */
+const REC_KEY='neonArenaRecordsV1';
+function loadRecords(){
+  try{const r=JSON.parse(localStorage.getItem(REC_KEY)); if(r&&r.totals)return r;}catch(e){}
+  return {matches:[],totals:{matches:0,kills:0,deaths:0,headshots:0,bestStreak:0,bestKills:0}};
+}
+function saveMatch(){
+  const rec=loadRecords();
+  const m={t:Date.now(),k:player.kills,d:player.deaths,hs:player.headshots,bs:player.bestStreak,s:player.score||0};
+  rec.matches.unshift(m); rec.matches=rec.matches.slice(0,20);
+  const t=rec.totals;
+  t.matches++; t.kills+=m.k; t.deaths+=m.d; t.headshots+=m.hs;
+  const newBest=m.k>t.bestKills&&m.k>0; t.bestKills=Math.max(t.bestKills,m.k);
+  t.bestStreak=Math.max(t.bestStreak,m.bs);
+  try{localStorage.setItem(REC_KEY,JSON.stringify(rec));}catch(e){}
+  return newBest;
+}
+function pad2(n){return (n<10?'0':'')+n;}
+function renderRecords(){
+  const rec=loadRecords(),t=rec.totals;
+  const kd=t.deaths?(t.kills/t.deaths).toFixed(2):(''+t.kills);
+  let h='<div class="recGrid">'
+    +'<div>总场次<b>'+t.matches+'</b></div>'
+    +'<div>总击杀<b>'+t.kills+'</b></div>'
+    +'<div>K/D<b>'+kd+'</b></div>'
+    +'<div>总爆头<b>'+t.headshots+'</b></div>'
+    +'<div>单场最佳<b>'+t.bestKills+'</b></div>'
+    +'<div>最高连杀<b>'+t.bestStreak+'</b></div>'
+    +'</div>';
+  if(rec.matches.length){
+    h+='<div id="recList">'+rec.matches.map(m=>{
+      const dt=new Date(m.t);
+      const ds=(dt.getMonth()+1)+'/'+dt.getDate()+' '+pad2(dt.getHours())+':'+pad2(dt.getMinutes());
+      return '<div class="recRow"><span>'+ds+'</span><span>'+m.k+'杀 / '+m.d+'死</span><span>'+m.hs+'爆头</span><span>连杀'+m.bs+'</span></div>';
+    }).join('')+'</div><button id="recClear">清空战绩</button>';
+  }else{
+    h+='<div id="recEmpty">还没有战绩，去打一场吧</div>';
+  }
+  $('recBody').innerHTML=h;
+  const c=$('recClear');
+  if(c)c.addEventListener('click',()=>{try{localStorage.removeItem(REC_KEY);}catch(e){} renderRecords();});
 }
 $('startBtn').addEventListener('click',startGame);
 $('againBtn').addEventListener('click',startGame);
@@ -2073,6 +2130,7 @@ $('menuBtn').addEventListener('click',()=>{
   Music.stop();
   resetGame(); state='menu';
   $('over').style.display='none'; $('menu').style.display='flex';
+  renderRecords();
 });
 /* ================= 玩家更新 ================= */
 function updatePlayer(dt){
@@ -2198,7 +2256,8 @@ applyBotCount();
 applyScene(gameCfg.sceneIdx);
 applyQuality(gameCfg.qIdx);
 for(const s of PICKUP_SPOTS)makePickup(s);
-updateHpHUD(); updateAmmoHUD();
+updateHpHUD(); updateAmmoHUD(); updateMoneyHUD(); updateNadeHUD();
+renderRecords();
 requestAnimationFrame(loop);
 })();
 
