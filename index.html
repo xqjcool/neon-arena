@@ -1230,27 +1230,50 @@ function spawnPointFar(){
 }
 /* ================= CS 风格战术士兵 ================= */
 const UNIFORM_SETS=[
-  {uni:0x6b6f4e,vest:0x3a3d33,helm:0x4a4d40},
-  {uni:0x8a7a5c,vest:0x4a4238,helm:0x6e6250},
-  {uni:0x5c6068,vest:0x33363c,helm:0x484c54},
-  {uni:0x3d4438,vest:0x242824,helm:0x2e332b}
+  {base:'#6b6f4e',s1:'#565a3c',s2:'#7d815c',vest:0x3a3d33,helm:0x4a4d40},
+  {base:'#8a7a5c',s1:'#6e6248',s2:'#9c8d6e',vest:0x4a4238,helm:0x6e6250},
+  {base:'#5c6068',s1:'#484c54',s2:'#70767e',vest:0x33363c,helm:0x484c54},
+  {base:'#3d4438',s1:'#2b3027',s2:'#4e5547',vest:0x242824,helm:0x2e332b}
 ];
 const SKIN_TONES=[0xd9a066,0xb07845,0x8a5a33,0xe8b88a];
 const DIFF_ACCENT=[0x39ff6a,0xffe14d,0xff9a2e,0xff4444];
+const _camoTexCache=[];
+function getCamoTex(i){ // 程序化迷彩纹理
+  if(_camoTexCache[i])return _camoTexCache[i];
+  const s=UNIFORM_SETS[i];
+  const c=document.createElement('canvas'); c.width=c.height=128;
+  const x=c.getContext('2d');
+  x.fillStyle=s.base; x.fillRect(0,0,128,128);
+  for(let n=0;n<110;n++){
+    x.fillStyle=n%2?s.s1:s.s2;
+    x.globalAlpha=0.45+Math.random()*0.35;
+    const w=5+Math.random()*13,h=4+Math.random()*9;
+    x.save(); x.translate(Math.random()*128,Math.random()*128); x.rotate(Math.random()*Math.PI);
+    x.beginPath(); x.ellipse(0,0,w/2,h/2,0,0,Math.PI*2); x.fill(); x.restore();
+  }
+  x.globalAlpha=0.10; x.fillStyle='#000';
+  for(let n=0;n<400;n++)x.fillRect(Math.random()*128,Math.random()*128,1.5,1.5);
+  x.globalAlpha=1;
+  const t=new THREE.CanvasTexture(c);
+  t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(1.6,1.6);
+  _camoTexCache[i]=t; return t;
+}
 function makeBot(idx){
   const uset=UNIFORM_SETS[idx%UNIFORM_SETS.length];
   const accent=DIFF_ACCENT[gameCfg.diffIdx];
   const g=new THREE.Group();
-  const uniM=new THREE.MeshStandardMaterial({color:uset.uni,roughness:0.8,metalness:0.05,envMapIntensity:0.5});
-  const vestM=new THREE.MeshStandardMaterial({color:uset.vest,roughness:0.85,metalness:0.05,envMapIntensity:0.5});
-  const helmM=new THREE.MeshStandardMaterial({color:uset.helm,roughness:0.7,metalness:0.15,envMapIntensity:0.5});
-  const skinM=new THREE.MeshStandardMaterial({color:SKIN_TONES[idx%SKIN_TONES.length],roughness:0.65,metalness:0,envMapIntensity:0.4});
-  const darkM=new THREE.MeshStandardMaterial({color:0x14161a,roughness:0.6,metalness:0.4,envMapIntensity:0.5});
+  const uniM=new THREE.MeshStandardMaterial({map:getCamoTex(idx%4),roughness:0.92,metalness:0.02,envMapIntensity:0.35});
+  const vestM=new THREE.MeshStandardMaterial({color:uset.vest,roughness:0.95,metalness:0.03,envMapIntensity:0.3});
+  const helmM=new THREE.MeshStandardMaterial({color:uset.helm,roughness:0.5,metalness:0.3,envMapIntensity:0.7});
+  const skinM=new THREE.MeshStandardMaterial({color:SKIN_TONES[idx%SKIN_TONES.length],roughness:0.6,metalness:0,envMapIntensity:0.4});
+  const darkM=new THREE.MeshStandardMaterial({color:0x16181c,roughness:0.55,metalness:0.35,envMapIntensity:0.5});
+  const woodM=new THREE.MeshStandardMaterial({color:0x7a4a22,roughness:0.55,metalness:0.05,envMapIntensity:0.5});
+  const balaM=new THREE.MeshStandardMaterial({color:0x1b1d20,roughness:0.95,metalness:0,envMapIntensity:0.25});
   const accM=new THREE.MeshBasicMaterial({color:accent});
   const bot={
-    idx:idx,name:BOT_NAMES[idx%BOT_NAMES.length],g:g,flashMats:[uniM,vestM,helmM,skinM],hitMeshes:[],
+    idx:idx,name:BOT_NAMES[idx%BOT_NAMES.length],g:g,flashMats:[uniM,vestM,helmM,skinM,balaM,woodM],hitMeshes:[],
     legL:null,legR:null,rifle:null,muzzleTip:null,muzFlash:null,
-    recoil:0,muzT:0,dying:false,dieT:0,blindT:0,kills:0,
+    recoil:0,muzT:0,dying:false,dieT:0,blindT:0,kills:0,dieAxis:'x',dieSide:1,
     pos:new THREE.Vector3(),hp:100,maxHp:100,alive:true,respawnT:0,enabled:false,
     hpFg:null,speed:rand(5.2,6.6),shootCd:rand(0.6,1.6),reaction:0,
     strafDir:Math.random()<0.5?1:-1,strafT:rand(1,2.4),flashT:0,walkPhase:rand(0,6)
@@ -1264,59 +1287,84 @@ function makeBot(idx){
     const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
     m.position.set(x,y,z); g.add(m); return tag(m,part||'body');
   }
-  // 腿
+  // 腿：工装裤 + 侧兜 + 护膝 + 军靴
   for(const sx of[-1,1]){
-    const piv=new THREE.Group(); piv.position.set(sx*0.13,0.92,0); g.add(piv);
-    const th=new THREE.Mesh(new THREE.BoxGeometry(0.16,0.5,0.18),uniM);
-    th.position.y=-0.25; piv.add(th); tag(th,'body');
-    const bt=new THREE.Mesh(new THREE.BoxGeometry(0.17,0.16,0.26),darkM);
-    bt.position.set(0,-0.52,0.04); piv.add(bt); tag(bt,'body');
+    const piv=new THREE.Group(); piv.position.set(sx*0.13,0.95,0); g.add(piv);
+    function lbx(w,h,d,mat,x,y,z){
+      const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
+      m.position.set(x,y,z); piv.add(m); return tag(m,'body');
+    }
+    lbx(0.17,0.42,0.19,uniM,0,-0.21,0);          // 大腿
+    lbx(0.05,0.16,0.14,uniM,sx*0.11,-0.22,0);     // 侧兜
+    lbx(0.15,0.40,0.17,uniM,0,-0.62,0);           // 小腿
+    lbx(0.16,0.16,0.05,darkM,0,-0.55,0.10);       // 护膝
+    lbx(0.16,0.15,0.28,darkM,0,-0.875,0.05);      // 军靴
     if(sx<0)bot.legL=piv; else bot.legR=piv;
   }
-  // 躯干 + 战术背心 + 弹匣包 + 背包
-  bx(0.44,0.58,0.28,uniM,0,1.21,0);
-  bx(0.48,0.42,0.32,vestM,0,1.24,0);
-  for(let pi=-1;pi<=1;pi++)bx(0.10,0.13,0.05,darkM,pi*0.13,1.22,0.175);
-  bx(0.50,0.04,0.34,accM,0,1.44,0);
-  bx(0.34,0.40,0.14,vestM,0,1.25,-0.23);
-  // 头：皮肤 + 头盔 + 盔带 + 护目镜
-  const neck=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,0.12,8),skinM);
-  neck.position.y=1.55; neck.castShadow=true; g.add(neck);
-  const head=new THREE.Mesh(new THREE.SphereGeometry(0.13,14,12),skinM);
-  head.position.y=1.66; g.add(head); tag(head,'head');
-  const helm=new THREE.Mesh(new THREE.SphereGeometry(0.155,14,12,0,Math.PI*2,0,Math.PI*0.55),helmM);
-  helm.position.y=1.68; helm.scale.set(1,0.85,1.05); helm.castShadow=true; g.add(helm); tag(helm,'head');
+  // 骨盆 + 腰带
+  bx(0.40,0.14,0.26,uniM,0,1.02,0);
+  bx(0.42,0.06,0.28,darkM,0,1.06,0);
+  // 躯干：作战服 + 防弹背心（前后插板 + 束腹带 + MOLLE织带 + 弹匣包）
+  bx(0.42,0.52,0.26,uniM,0,1.32,0);
+  bx(0.36,0.40,0.06,vestM,0,1.34,0.15);
+  bx(0.36,0.40,0.06,vestM,0,1.34,-0.15);
+  bx(0.46,0.16,0.30,vestM,0,1.16,0);
+  bx(0.30,0.025,0.02,darkM,0,1.30,0.185);
+  bx(0.30,0.025,0.02,darkM,0,1.40,0.185);
+  for(let pi=-1;pi<=1;pi++)bx(0.09,0.13,0.06,vestM,pi*0.11,1.24,0.20);
+  bx(0.09,0.06,0.28,vestM,-0.14,1.60,0);
+  bx(0.09,0.06,0.28,vestM,0.14,1.60,0);
+  bx(0.095,0.06,0.012,accM,-0.235,1.52,0.02); // 国旗章/难度标识
+  // 头：巴拉克拉法头套 或 露脸+护目镜
+  const neck=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,0.10,8),skinM);
+  neck.position.y=1.62; neck.castShadow=true; g.add(neck);
+  const headM=idx%2===0?balaM:skinM;
+  const head=new THREE.Mesh(new THREE.SphereGeometry(0.125,14,12),headM);
+  head.position.y=1.73; g.add(head); tag(head,'head');
+  if(idx%2===0)bx(0.16,0.045,0.02,skinM,0,1.74,0.125,'head'); // 头套眼部开口
+  bx(0.19,0.07,0.05,darkM,0,1.75,0.12,'head');  // 护目镜
+  // Ops-Core 头盔：盔体 + 导轨 + 前支架 + 难度色带
+  const helm=new THREE.Mesh(new THREE.SphereGeometry(0.155,14,12,0,Math.PI*2,0,Math.PI*0.60),helmM);
+  helm.position.y=1.75; helm.scale.set(1,0.88,1.08); helm.castShadow=true; g.add(helm); tag(helm,'head');
+  bx(0.02,0.03,0.12,darkM,-0.15,1.76,0.02,'head');
+  bx(0.02,0.03,0.12,darkM,0.15,1.76,0.02,'head');
+  bx(0.06,0.05,0.03,darkM,0,1.79,0.145,'head');
   const band=new THREE.Mesh(new THREE.CylinderGeometry(0.158,0.158,0.035,14),accM);
-  band.position.y=1.63; band.scale.set(1,1,1.05); g.add(band);
-  bx(0.17,0.06,0.04,darkM,0,1.66,0.115,'head');
-  // 手臂：持枪姿势
+  band.position.y=1.70; band.scale.set(1,1,1.08); g.add(band);
+  // 手臂：作战服 + 护肘 + 露出手臂 + 战术手套，持枪姿势
   function arm(sx,upRx,elRx){
-    const sh=new THREE.Group(); sh.position.set(sx*0.28,1.42,0); sh.rotation.x=upRx; g.add(sh);
-    const up=new THREE.Mesh(new THREE.BoxGeometry(0.11,0.30,0.11),uniM);
-    up.position.y=-0.15; sh.add(up); tag(up,'body');
-    const el=new THREE.Group(); el.position.y=-0.30; el.rotation.x=elRx; sh.add(el);
-    const fo=new THREE.Mesh(new THREE.BoxGeometry(0.10,0.28,0.10),uniM);
-    fo.position.y=-0.14; el.add(fo); tag(fo,'body');
-    const hand=new THREE.Mesh(new THREE.SphereGeometry(0.06,8,8),skinM);
-    hand.position.y=-0.30; el.add(hand); tag(hand,'body');
+    const sh=new THREE.Group(); sh.position.set(sx*0.27,1.50,0); sh.rotation.x=upRx; g.add(sh);
+    function abx(w,h,d,mat,x,y,z,parent){
+      const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
+      m.position.set(x,y,z); parent.add(m); return tag(m,'body');
+    }
+    abx(0.11,0.30,0.11,uniM,0,-0.15,0,sh);
+    abx(0.12,0.10,0.12,darkM,0,-0.30,0,sh);
+    const el=new THREE.Group(); el.position.y=-0.32; el.rotation.x=elRx; sh.add(el);
+    abx(0.10,0.26,0.10,skinM,0,-0.13,0,el);
+    abx(0.10,0.09,0.11,darkM,0,-0.28,0,el);
     return sh;
   }
   arm(-1,-0.95,-0.55);
   arm(1,-0.75,-0.85);
-  // 步枪：端在胸前指向 +z（模型前方）
+  // AK 步枪：木托 + 木护木 + 弧形弹匣 + 枪口制退器
   const rifle=new THREE.Group();
   function rbx(w,h,d,mat,x,y,z){
     const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
     m.position.set(x,y,z); m.castShadow=true; rifle.add(m); return tag(m,'body');
   }
-  rbx(0.07,0.10,0.36,darkM,0,0,0.02);
-  const rb=new THREE.Mesh(new THREE.CylinderGeometry(0.013,0.013,0.24,8),darkM);
-  rb.rotation.x=Math.PI/2; rb.position.set(0,0.015,0.30); rb.castShadow=true; rifle.add(rb); tag(rb,'body');
-  const rmg=rbx(0.05,0.17,0.07,darkM,0,-0.11,0.06); rmg.rotation.x=0.3;
-  rbx(0.06,0.09,0.18,darkM,0,-0.01,-0.26);
-  rbx(0.012,0.035,0.012,darkM,0,0.07,0.24);
-  const tip=new THREE.Object3D(); tip.position.set(0,0.015,0.44); rifle.add(tip);
-  const flash=new THREE.Mesh(new THREE.PlaneGeometry(0.3,0.3),
+  rbx(0.06,0.09,0.34,darkM,0,0,0.02);            // 机匣
+  const rstock=rbx(0.055,0.10,0.20,woodM,0,-0.01,-0.26); // 木枪托
+  rbx(0.05,0.07,0.16,woodM,0,-0.02,0.16);        // 木护木
+  const rgrip=rbx(0.045,0.11,0.05,woodM,0,-0.09,-0.06); rgrip.rotation.x=0.3;
+  const rmag=rbx(0.045,0.16,0.06,darkM,0,-0.12,0.05); rmag.rotation.x=0.35; // 弧形弹匣
+  const rb=new THREE.Mesh(new THREE.CylinderGeometry(0.012,0.012,0.22,8),darkM);
+  rb.rotation.x=Math.PI/2; rb.position.set(0,0.02,0.36); rb.castShadow=true; rifle.add(rb); tag(rb,'body');
+  rbx(0.012,0.04,0.012,darkM,0,0.055,0.44);      // 准星
+  rbx(0.05,0.03,0.06,darkM,0,0.06,-0.08);        // 照门座
+  rbx(0.03,0.03,0.06,darkM,0,0.02,0.48);         // 制退器
+  const tip=new THREE.Object3D(); tip.position.set(0,0.02,0.52); rifle.add(tip);
+  const flash=new THREE.Mesh(new THREE.PlaneGeometry(0.32,0.32),
     new THREE.MeshBasicMaterial({color:0xffcc55,transparent:true,opacity:0.95,blending:THREE.AdditiveBlending,depthWrite:false}));
   flash.position.copy(tip.position); flash.visible=false; rifle.add(flash);
   rifle.position.set(0.07,1.13,0.30);
@@ -1350,7 +1398,8 @@ function respawnBot(bot,first){
   bot.pos.copy(p); bot.maxHp=diffPreset.hp; bot.hp=bot.maxHp; bot.alive=true;
   bot.hpFg.scale.x=1; bot.hpFg.material.color.setHex(0x33ff66);
   for(const m of bot.flashMats)m.emissive.setHex(0x000000);
-  bot.dying=false; bot.dieT=0; bot.g.rotation.x=0;
+  bot.dying=false; bot.dieT=0; bot.g.rotation.x=0; bot.g.rotation.z=0;
+  bot.dieAxis=Math.random()<0.7?'x':'z'; bot.dieSide=Math.random()<0.5?1:-1;
   bot.recoil=0; bot.muzT=0; bot.muzFlash.visible=false;
   bot.shootCd=rand(0.8,1.8)*diffPreset.cd; bot.reaction=0;
   bot.g.visible=true;
@@ -1364,8 +1413,9 @@ function updateBot(bot,dt){
   if(bot.dying){ // 倒地动画
     bot.dieT+=dt;
     const k=Math.min(bot.dieT/0.38,1);
-    bot.g.rotation.x=-k*k*1.35;
-    if(bot.dieT>1.25){bot.dying=false;bot.alive=false;bot.g.visible=false;bot.g.rotation.x=0;}
+    if(bot.dieAxis==='x')bot.g.rotation.x=-k*k*1.35;
+    else bot.g.rotation.z=k*k*1.35*bot.dieSide;
+    if(bot.dieT>1.25){bot.dying=false;bot.alive=false;bot.g.visible=false;bot.g.rotation.x=0;bot.g.rotation.z=0;}
     return;
   }
   if(!bot.alive){
