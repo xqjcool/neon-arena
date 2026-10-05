@@ -1274,6 +1274,8 @@ function makeBot(idx){
     idx:idx,name:BOT_NAMES[idx%BOT_NAMES.length],g:g,flashMats:[uniM,vestM,helmM,skinM,balaM,woodM],hitMeshes:[],
     legL:null,legR:null,rifle:null,muzzleTip:null,muzFlash:null,
     recoil:0,muzT:0,dying:false,dieT:0,blindT:0,kills:0,dieAxis:'x',dieSide:1,
+    tactic:'direct',tactT:rand(1,3),flankDir:1,hasLOS:false,heard:false,
+    dodgeT:0,fleeX:0,fleeZ:0,burstN:0,
     pos:new THREE.Vector3(),hp:100,maxHp:100,alive:true,respawnT:0,enabled:false,
     hpFg:null,speed:rand(5.2,6.6),shootCd:rand(0.6,1.6),reaction:0,
     strafDir:Math.random()<0.5?1:-1,strafT:rand(1,2.4),flashT:0,walkPhase:rand(0,6)
@@ -1400,6 +1402,8 @@ function respawnBot(bot,first){
   for(const m of bot.flashMats)m.emissive.setHex(0x000000);
   bot.dying=false; bot.dieT=0; bot.g.rotation.x=0; bot.g.rotation.z=0;
   bot.dieAxis=Math.random()<0.7?'x':'z'; bot.dieSide=Math.random()<0.5?1:-1;
+  bot.tactic='direct'; bot.tactT=rand(1,3); bot.hasLOS=false; bot.heard=false;
+  bot.dodgeT=0; bot.burstN=0;
   bot.recoil=0; bot.muzT=0; bot.muzFlash.visible=false;
   bot.shootCd=rand(0.8,1.8)*diffPreset.cd; bot.reaction=0;
   bot.g.visible=true;
@@ -1408,6 +1412,9 @@ function respawnBot(bot,first){
 }
 const _v1=new THREE.Vector3(),_v2=new THREE.Vector3(),_v3=new THREE.Vector3();
 function botEyePos(bot,out){return out.set(bot.pos.x,bot.pos.y+1.5,bot.pos.z);}
+/* ================= 声音感知：枪声/爆炸暴露位置 ================= */
+let lastNoiseT=-99,lastNoiseX=0,lastNoiseZ=0;
+function makeNoise(x,z){lastNoiseT=elapsed;lastNoiseX=x;lastNoiseZ=z;}
 function updateBot(bot,dt){
   if(!bot.enabled)return;
   if(bot.dying){ // 倒地动画
@@ -1427,16 +1434,48 @@ function updateBot(bot,dt){
   const dist=_v1.length()||0.001;
   const dx=_v1.x/dist,dz=_v1.z/dist;
   bot.g.rotation.y=Math.atan2(dx,dz);
-  // 移动：远追 / 近退 / 中距离走位扫射
+  // 战术决策：包抄 / 拉扯 / 走位 / 直来
+  bot.tactT-=dt;
+  if(bot.tactT<=0){
+    bot.tactT=rand(2.5,5);
+    bot.tactic='direct';
+    const allies=bots.filter(b=>b!==bot&&b.enabled&&b.alive&&!b.dying).length;
+    const r=Math.random();
+    if(bot.hp<bot.maxHp*0.35&&dist<26)bot.tactic='retreat';       // 残血拉扯
+    else if(allies>=1&&dist<26&&dist>10&&r<0.45){bot.tactic='flank';bot.flankDir=Math.random()<0.5?1:-1;} // 包抄
+    else if(r<0.65)bot.tactic='strafe';                            // 走位扫射
+  }
+  // 听声辨位：无视野且刚听到枪声/爆炸，朝声源移动
+  bot.heard=false;
+  if(elapsed-lastNoiseT<1.5){
+    const ndx=lastNoiseX-bot.pos.x,ndz=lastNoiseZ-bot.pos.z;
+    const nd=Math.hypot(ndx,ndz);
+    if(nd>4&&nd<34)bot.heard=true;
+  }
   let mx=0,mz=0;
   const spd=bot.speed*diffPreset.spd+difficulty*1.6;
-  if(dist>21){mx=dx;mz=dz;}
-  else if(dist<9){mx=-dx;mz=-dz;}
-  else{
+  if(bot.dodgeT>0){ // 躲手雷：往炸点反方向跑
+    bot.dodgeT-=dt;
+    const fx=bot.pos.x-bot.fleeX,fz=bot.pos.z-bot.fleeZ;
+    const fl=Math.hypot(fx,fz)||0.001;
+    mx=fx/fl; mz=fz/fl;
+  }else if(bot.heard&&!bot.hasLOS){
+    const nx=lastNoiseX-bot.pos.x,nz=lastNoiseZ-bot.pos.z;
+    const nl=Math.hypot(nx,nz)||0.001;
+    mx=nx/nl; mz=nz/nl;
+  }else if(dist>28){mx=dx;mz=dz;}
+  else if(bot.tactic==='flank'){ // 包抄：绕到侧面
+    const a=Math.atan2(dx,dz)+bot.flankDir*1.0;
+    mx=Math.sin(a); mz=Math.cos(a);
+  }else if(bot.tactic==='retreat'){ // 残血边打边退
+    bot.strafT-=dt;
+    if(bot.strafT<=0){bot.strafDir*=-1;bot.strafT=rand(0.5,1.1);}
+    mx=-dx*1.1-dz*bot.strafDir*0.8; mz=-dz*1.1+dx*bot.strafDir*0.8;
+  }else if(bot.tactic==='strafe'||dist>=9){ // 走位扫射
     bot.strafT-=dt;
     if(bot.strafT<=0){bot.strafDir*=-1;bot.strafT=rand(1,2.4);}
     mx=-dz*bot.strafDir+dx*0.3; mz=dx*bot.strafDir+dz*0.3;
-  }
+  }else{mx=-dx;mz=-dz;}
   _v2.set(bot.pos.x+mx*spd*dt,0,bot.pos.z+mz*spd*dt);
   collideCircle(_v2,0.55);
   bot.pos.x=_v2.x; bot.pos.z=_v2.z;
@@ -1457,15 +1496,24 @@ function updateBot(bot,dt){
   if(bot.muzT>0){bot.muzT-=dt; if(bot.muzT<=0)bot.muzFlash.visible=false;}
   if(bot.flashT>0){bot.flashT-=dt;if(bot.flashT<=0)for(const m of bot.flashMats)m.emissive.setHex(0x000000);}
   if(!player.alive)return;
-  // 开火（致盲时停火）
+  // 开火（致盲/躲雷时停火）
   if(bot.blindT>0){bot.blindT-=dt;}
+  else if(bot.dodgeT>0){bot.shootCd=Math.max(bot.shootCd,0.3);bot.reaction=0;}
   else{
   bot.shootCd-=dt;
   if(bot.shootCd<=0&&dist<34){
     botEyePos(bot,_v3);
     _v2.set(player.pos.x,EYE+player.y,player.pos.z);
-    if(hasLOS(_v3,_v2)&&!smokeBlocked(_v3,_v2)){bot.reaction=0.3;bot.shootCd=rand(0.75,1.5)*diffPreset.cd*(1-difficulty*0.3);}
-    else bot.shootCd=0.35;
+    if(hasLOS(_v3,_v2)&&!smokeBlocked(_v3,_v2)){
+      bot.hasLOS=true; bot.reaction=0.3;
+      let cd=rand(0.75,1.5)*diffPreset.cd*(1-difficulty*0.3);
+      if(dist>20){ // 远距离点射：3发一停顿
+        bot.burstN++;
+        if(bot.burstN>=3){bot.burstN=0;cd+=rand(0.4,0.7);}
+      }else if(dist<12){cd*=0.7;} // 近距离泼水
+      bot.shootCd=cd;
+    }
+    else{bot.hasLOS=false;bot.shootCd=0.35;}
   }
   if(bot.reaction>0){
     bot.reaction-=dt;
@@ -1473,6 +1521,7 @@ function updateBot(bot,dt){
       botEyePos(bot,_v3);
       _v2.set(player.pos.x,EYE+player.y,player.pos.z);
       if(hasLOS(_v3,_v2)&&!smokeBlocked(_v3,_v2))botFire(bot,dist);
+      else bot.hasLOS=false;
     }
   }
   }
@@ -1624,12 +1673,14 @@ function tryFire(){
   muzzle.material.opacity=0.95;
   muzzleLight.intensity=30;
   sfxShoot(player.cur);
-  if(player.cur==='awp'&&player.scoped){player.scoped=false;applyScope();} // AWP 开火后退镜
+  const wasScoped=player.cur==='awp'&&player.scoped;
+  if(wasScoped){player.scoped=false;applyScope();} // AWP 开火后退镜
+  makeNoise(player.pos.x,player.pos.z); // 开枪声暴露位置
   camera.getWorldDirection(_dir);
   _origin.copy(camera.position);
   const from=_origin.clone().add(_dir.clone().multiplyScalar(0.6));
   let anyHit=false;
-  const spread=(player.cur==='awp'&&player.scoped)?w.scopedSpread:w.spread;
+  const spread=(player.cur==='awp'&&wasScoped)?w.scopedSpread:w.spread;
   for(let p=0;p<w.pellets;p++){
     _v1.copy(_dir);
     _v1.x+=rand(-spread,spread);_v1.y+=rand(-spread,spread);_v1.z+=rand(-spread,spread);
@@ -1893,6 +1944,11 @@ function updateNades(dt){
     const p=n.m.position;
     if(p.y<0.09){p.y=0.09; n.vel.y*=-0.35; n.vel.x*=0.7; n.vel.z*=0.7;}
     collideCircle(p,0.12);
+    // 敌人躲手雷：手雷落到脚边，敌人逃离炸点
+    for(const b of bots){
+      if(!b.enabled||!b.alive||b.dying||b.dodgeT>0)continue;
+      if(Math.hypot(b.pos.x-p.x,b.pos.z-p.z)<5){b.dodgeT=1.1;b.fleeX=p.x;b.fleeZ=p.z;}
+    }
     if(n.t>=n.fuse){detonateNade(n); nades.splice(i,1);}
   }
 }
@@ -1905,6 +1961,7 @@ function detonateNade(n){
 function explodeHE(pos){
   spawnBurst(pos,0xffaa33,40,10,0.8); spawnBurst(pos,0xff5522,25,7,0.6); spawnBurst(pos,0x999999,15,4,1.0);
   boomLight.position.copy(pos); boomLight.position.y+=1; boomLight.intensity=90;
+  makeNoise(pos.x,pos.z); // 爆炸声暴露位置
   if(AC&&!muted){const t=AC.currentTime; nzBurst(t,0.5,0.7,'lowpass',300); thumpSfx(t,45,0.6,0.8);}
   for(const b of bots){
     if(!b.alive||b.dying||!b.enabled)continue;
